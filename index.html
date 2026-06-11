@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TimeTrack Power-Up</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+</head>
+<body>
+<script>
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function getData(t) {
+  return t.get('card', 'shared', 'timetrack').then(d => d || { estimated: 0, spent: 0, progress: 0 });
+}
+function getMemberLog(t) {
+  return t.get('card', 'shared', 'timetrack-members').then(d => d || []);
+}
+function formatHrs(n) {
+  const v = parseFloat(n) || 0;
+  return v === 1 ? '1 hr' : `${v} hrs`;
+}
+function badgeColor(progress) {
+  if (progress >= 100) return 'green';
+  if (progress >= 60)  return 'yellow';
+  if (progress > 0)    return 'blue';
+  return 'light-gray';
+}
+
+// ─── Card Badges (front of card) ─────────────────────────────────────────────
+function cardBadges(t) {
+  return getData(t).then(d => {
+    const badges = [];
+    if (d.estimated > 0 || d.spent > 0) {
+      badges.push({
+        text: `⏱ ${formatHrs(d.spent)} / ${formatHrs(d.estimated)}`,
+        color: parseFloat(d.spent) > parseFloat(d.estimated) && d.estimated > 0 ? 'red' : 'blue'
+      });
+    }
+    if (d.progress > 0 || d.estimated > 0 || d.spent > 0) {
+      badges.push({
+        text: `${d.progress || 0}%`,
+        color: badgeColor(d.progress || 0)
+      });
+    }
+    return badges;
+  });
+}
+
+// ─── Card Detail Badges (inside card) ────────────────────────────────────────
+function cardDetailBadges(t) {
+  return Promise.all([getData(t), getMemberLog(t)]).then(([d, log]) => {
+    const badges = [{
+      title: 'Time Tracking',
+      text: `Est: ${formatHrs(d.estimated)} | Spent: ${formatHrs(d.spent)} | ${d.progress || 0}% complete`,
+      color: badgeColor(d.progress || 0),
+      callback: openCardPopup
+    }];
+    if (log.length > 0) {
+      const memberTotals = {};
+      log.forEach(entry => {
+        memberTotals[entry.name] = (memberTotals[entry.name] || 0) + (parseFloat(entry.hours) || 0);
+      });
+      const summary = Object.entries(memberTotals)
+        .map(([name, hrs]) => `${name.split(' ')[0]}: ${hrs}h`)
+        .join(' · ');
+      badges.push({
+        title: 'Team Log',
+        text: `⏱ ${summary}`,
+        color: 'purple',
+        callback: openTeamLogPopup
+      });
+    }
+    return badges;
+  });
+}
+
+// ─── Card Buttons ─────────────────────────────────────────────────────────────
+// Trello only supports ONE card button per Power-Up — combined popup with tabs
+function cardButtons(t) {
+  return [{
+    icon: 'https://cdn-icons-png.flaticon.com/512/2088/2088617.png',
+    text: 'TimeTrack',
+    callback: openCardPopup
+  }];
+}
+
+function openCardPopup(t) {
+  return t.popup({ title: 'TimeTrack', url: './card-popup.html', height: 600 });
+}
+function openTeamLogPopup(t) {
+  return t.popup({ title: 'TimeTrack', url: './card-popup.html?tab=team', height: 480 });
+}
+
+// ─── Board Summary ────────────────────────────────────────────────────────────
+function openBoardSummary(t) {
+  return t.board('id', 'name').then(board => {
+    return Promise.all([t.lists('id', 'name'), t.cards('id', 'idList', 'name', 'labels')]).then(([lists, cards]) => {
+      const promises = cards.map(card =>
+        Promise.all([
+          t.get(card.id, 'shared', 'timetrack').catch(() => null),
+          t.get(card.id, 'shared', 'timetrack-members').catch(() => null),
+          t.get(card.id, 'shared', 'timetrack-assigned').catch(() => null)
+        ]).then(([d, log, assigned]) => ({
+          id: card.id, listId: card.idList, name: card.name,
+          assignedIds: assigned || [],
+          data: d || {}, log: log || []
+        }))
+      );
+
+      // Build lookup maps from card data
+      const cardLabelMap = {};
+      cards.forEach(card => { cardLabelMap[card.id] = card.labels || []; });
+
+      return Promise.all(promises).then(cardData => {
+        // Pass 1 — build full member info from ALL log entries across all cards
+        const memberInfoFromLog = {};
+        cardData.forEach(({ log }) => {
+          (log || []).forEach(entry => {
+            const key = entry.memberId || entry.name;
+            if (key && entry.name) {
+              // Always update so we get the most complete info
+              memberInfoFromLog[key] = {
+                name:   entry.name,
+                avatar: entry.avatar || (memberInfoFromLog[key] && memberInfoFromLog[key].avatar) || null
+              };
+            }
+          });
+        });
+
+        const listMap  = {};
+        lists.forEach(l => {
+          listMap[l.id] = { id: l.id, name: l.name, estimated: 0, spent: 0, pctSum: 0, count: 0 };
+        });
+        const memberMap = {};
+        const labelMap  = {};
+        let boardEst = 0, boardSpent = 0, boardPctSum = 0, boardCount = 0;
+
+        // Pass 2 — accumulate all data
+        cardData.forEach(({ id, listId, data, log, assignedIds }) => {
+          const est   = parseFloat(data.estimated) || 0;
+          const spent = parseFloat(data.spent)     || 0;
+          const pct   = parseInt(data.progress, 10) || 0;
+          if (est > 0 || spent > 0 || pct > 0) {
+            boardEst += est; boardSpent += spent; boardPctSum += pct; boardCount++;
+            if (listMap[listId]) {
+              listMap[listId].estimated += est;
+              listMap[listId].spent     += spent;
+              listMap[listId].pctSum    += pct;
+              listMap[listId].count++;
+            }
+            // Per label
+            const labels = cardLabelMap[id] || [];
+            labels.forEach(lbl => {
+              if (!labelMap[lbl.id]) {
+                labelMap[lbl.id] = { name: lbl.name || lbl.color, color: lbl.color, pctSum: 0, count: 0 };
+              }
+              labelMap[lbl.id].pctSum += pct;
+              labelMap[lbl.id].count++;
+            });
+            // Per assigned member (from Power-Up Assign tab)
+            (assignedIds || []).forEach(mid => {
+              const info = memberInfoFromLog[mid] || { name: null, avatar: null };
+              if (!memberMap[mid]) {
+                memberMap[mid] = { name: info.name, avatar: info.avatar, estimated: 0, hoursLogged: 0, entries: 0, cardCount: 0 };
+              }
+              memberMap[mid].estimated += est;
+              memberMap[mid].cardCount += 1;
+              // Backfill name/avatar if we now have it
+              if (!memberMap[mid].name && info.name) memberMap[mid].name = info.name;
+              if (!memberMap[mid].avatar && info.avatar) memberMap[mid].avatar = info.avatar;
+            });
+          }
+          // Per log entry — accumulate hours and ensure member exists in map
+          (log || []).forEach(entry => {
+            const key = entry.memberId || entry.name;
+            if (!key) return;
+            if (!memberMap[key]) {
+              memberMap[key] = { name: entry.name, avatar: entry.avatar || null, estimated: 0, hoursLogged: 0, entries: 0, cardCount: 0 };
+            }
+            memberMap[key].hoursLogged += parseFloat(entry.hours) || 0;
+            memberMap[key].entries     += 1;
+            if (!memberMap[key].name && entry.name)   memberMap[key].name   = entry.name;
+            if (!memberMap[key].avatar && entry.avatar) memberMap[key].avatar = entry.avatar;
+          });
+        });
+
+        // Finalise — only show members who have logged time
+        const members = Object.values(memberMap)
+          .filter(m => m.entries > 0)
+          .map(m => ({
+            name:        m.name || 'Unknown',
+            avatar:      m.avatar,
+            estimated:   m.estimated,
+            hoursLogged: m.hoursLogged,
+            entries:     m.entries,
+            cardCount:   m.cardCount
+          })).sort((a, b) => b.estimated - a.estimated);
+
+        const summary = {
+          boardEst, boardSpent,
+          boardAvgPct: boardCount > 0 ? Math.round(boardPctSum / boardCount) : 0,
+          lists: lists.map(l => listMap[l.id]).filter(l => l.count > 0).map(l => ({
+            name: l.name, estimated: l.estimated, spent: l.spent,
+            avgPct: Math.round(l.pctSum / l.count), count: l.count
+          })),
+          members,
+          labels: Object.values(labelMap).sort((a, b) => b.count - a.count).map(l => ({
+            name: l.name, color: l.color,
+            avgPct: Math.round(l.pctSum / l.count), count: l.count
+          }))
+        };
+        return t.set('board', 'private', 'timetrack-summary', summary);
+      });
+    });
+  }).catch(() => {}).then(() => t.popup({ title: 'Time Summary', url: './list-summary.html', height: 600 }));
+}
+
+// ─── Board Buttons ────────────────────────────────────────────────────────────
+function boardButtons(t) {
+  return [{
+    icon: 'https://cdn-icons-png.flaticon.com/512/2088/2088617.png',
+    text: 'Time Summary',
+    callback: openBoardSummary
+  }];
+}
+
+// ─── Initialize ───────────────────────────────────────────────────────────────
+TrelloPowerUp.initialize({
+  'card-badges':        cardBadges,
+  'card-detail-badges': cardDetailBadges,
+  'card-buttons':       cardButtons,
+  'board-buttons':      boardButtons
+}, {
+  appKey:  'ed700e2887fc04558ed3a0efa61f25b6',
+  appName: 'TimeTrack'
+});
+</script>
+</body>
+</html>
