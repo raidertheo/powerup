@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TimeTrack</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3e;
+      --accent:  #5b8dee;
+      --accent2: #38d9a9;
+      --purple:  #a78bfa;
+      --warn:    #ff6b6b;
+      --text:    #e8eaf0;
+      --muted:   #6b7280;
+      --radius:  10px;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); padding: 14px; overflow-y: auto; max-height: 520px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+    .tab {
+      flex: 1; padding: 7px; text-align: center; font-size: 12px; font-weight: 600;
+      border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); transition: all .15s;
+      user-select: none;
+    }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Time tab ── */
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 5px; letter-spacing: .04em; text-transform: uppercase; }
+    .field input[type="number"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 500;
+      padding: 9px 11px; outline: none; transition: border-color .2s;
+      -moz-appearance: textfield;
+    }
+    .field input[type="number"]::-webkit-outer-spin-button,
+    .field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .field input[type="number"]:focus { border-color: var(--accent); }
+
+    .progress-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .progress-label-row label { font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+    .progress-value { font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 500; }
+    .progress-bar-bg { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-bottom: 4px; }
+    .progress-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .15s ease; }
+    .progress-bar-fill.done { background: var(--accent2); }
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: var(--border); outline: none; cursor: pointer; margin-bottom: 12px; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(91,141,238,.2); cursor: pointer; }
+    .status-chip { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; margin-bottom: 12px; display: inline-block; opacity: 0; transition: opacity .2s; }
+    .status-chip.visible { opacity: 1; }
+    .status-chip.over { background: rgba(255,107,107,.15); color: var(--warn); }
+    .status-chip.done { background: rgba(56,217,169,.15); color: var(--accent2); }
+
+    /* ── Team tab ── */
+    .member-strip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; margin-bottom: 14px; }
+    .member-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+    .member-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .member-name { font-size: 13px; font-weight: 600; }
+    .member-sub  { font-size: 10px; color: var(--muted); }
+    .log-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 16px; align-items: end; }
+    .field input[type="text"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; padding: 9px 11px; outline: none; transition: border-color .2s;
+    }
+    .field input[type="text"]:focus { border-color: var(--purple); }
+    .log-btn { padding: 9px 14px; background: var(--purple); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; height: 40px; transition: background .2s; }
+    .log-btn:hover { background: #9061f9; }
+    .section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .entry-list { display: flex; flex-direction: column; gap: 5px; }
+    .entry { display: flex; align-items: center; gap: 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; }
+    .entry-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--purple); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; overflow: hidden; color: #fff; }
+    .entry-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-info { flex: 1; min-width: 0; }
+    .entry-name { font-size: 11px; font-weight: 600; }
+    .entry-note { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-hrs { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; color: var(--purple); flex-shrink: 0; }
+    .entry-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; flex-shrink: 0; transition: color .15s; }
+    .entry-del:hover { color: var(--warn); }
+    .total-row { display: flex; justify-content: space-between; padding: 7px 0 0; border-top: 1px solid var(--border); margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .total-row span:last-child { font-family: 'DM Mono', monospace; font-weight: 500; color: var(--text); }
+    .empty-log { font-size: 12px; color: var(--muted); text-align: center; padding: 10px; }
+
+    /* Shared save button */
+    .save-btn { width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s, transform .1s; margin-top: 2px; }
+    .save-btn:hover  { background: #4a7de0; }
+    .save-btn:active { transform: scale(.98); }
+    .save-btn.saved  { background: var(--accent2); color: #0f1117; }
+    /* Assign tab */
+    .assign-intro { font-size: 11px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+    .assign-loading { font-size: 12px; color: var(--muted); text-align: center; padding: 16px; }
+    .assign-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; margin-bottom: 4px; user-select: none; }
+    .assign-row:hover { background: var(--surface); }
+    .assign-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--purple); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; overflow: hidden; color: #fff; }
+    .assign-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .assign-name { flex: 1; font-size: 13px; font-weight: 500; }
+    .assign-check { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+    .assign-check.checked { background: var(--accent); border-color: var(--accent); }
+    .assign-check.checked::after { content: '✓'; font-size: 11px; color: #fff; font-weight: 700; }
+    .assign-save { width: 100%; margin-top: 10px; padding: 10px; background: var(--accent); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s; }
+    .assign-save:hover { background: #4a7de0; }
+    .assign-save.saved { background: var(--accent2); color: #0f1117; }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" id="tab-time" onclick="switchTab('time')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Time</div>
+  <div class="tab"        id="tab-team" onclick="switchTab('team')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Log</div>
+  <div class="tab"        id="tab-assign" onclick="switchTab('assign')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Assign</div>
+</div>
+
+<!-- ── TIME PANEL ── -->
+<div class="panel active" id="panel-time">
+  <div class="fields">
+    <div class="field">
+      <label>Estimated Hours</label>
+      <input type="number" id="estimated" min="0" step="0.25" placeholder="0"/>
+    </div>
+    <div class="field">
+      <label>Hours Spent <span style="font-size:9px;color:var(--accent);letter-spacing:0">auto</span></label>
+      <input type="number" id="spent" min="0" step="0.25" placeholder="0" readonly style="opacity:.6;cursor:not-allowed;"/>
+    </div>
+  </div>
+  <div class="progress-label-row">
+    <label>% Complete</label>
+    <span class="progress-value" id="pct-display">0%</span>
+  </div>
+  <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-fill" style="width:0%"></div></div>
+  <input type="range" id="progress" min="0" max="100" step="1" value="0"/>
+  <div class="status-chip" id="status-chip"></div>
+  <div class="save-btn saved" id="save-time-btn" style="text-align:center;pointer-events:none;">✓ Saved</div>
+</div>
+
+<!-- ── ASSIGN PANEL ── -->
+<div class="panel" id="panel-assign">
+  <p class="assign-intro">Select members to assign to this card. Used for time attribution in the Board Summary.</p>
+  <div id="assign-list"><div class="assign-loading">Loading members…</div></div>
+</div>
+
+<!-- ── TEAM PANEL ── -->
+<div class="panel" id="panel-team">
+  <div class="member-strip">
+    <div class="member-avatar" id="member-avatar">?</div>
+    <div>
+      <div class="member-name" id="member-name">Loading…</div>
+      <div class="member-sub">Logging as you</div>
+    </div>
+  </div>
+  <div class="log-form">
+    <div class="field" style="grid-column:1/-1">
+      <label>Note (optional)</label>
+      <input type="text" id="note" placeholder="e.g. Code review, Bug fix…" maxlength="80"/>
+    </div>
+    <div class="field">
+      <label>Hours to Log</label>
+      <input type="number" id="log-hours" min="0" step="0.25" placeholder="0"/>
+    </div>
+    <button class="log-btn" id="log-btn">+ Log</button>
+  </div>
+  <div class="section-label">Log History</div>
+  <div class="entry-list" id="entry-list"></div>
+</div>
+
+<script>
+  const t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
+
+  // Check if opened on team tab (from detail badge callback)
+  const startTab = new URLSearchParams(window.location.search).get('tab') === 'team' ? 'team' : 'time';
+
+  let currentMember = null;
+  let logEntries    = [];
+
+  function switchTab(tab) {
+    ['time','team','assign'].forEach(id => {
+      document.getElementById('tab-' + id).classList.toggle('active', id === tab);
+      document.getElementById('panel-' + id).classList.toggle('active', id === tab);
+    });
+    if (tab === 'assign') renderAssign();
+  }
+
+  // ── Load everything in parallel ──
+  Promise.all([
+    t.get('card', 'shared', 'timetrack').then(d => d || {}),
+    t.get('card', 'shared', 'timetrack-members').then(d => d || []).catch(() => []),
+    t.member('id', 'fullName', 'avatar').catch(() => null)
+  ]).then(([timeData, entries, member]) => {
+
+    // Populate time fields — spent is derived from team log, not stored value
+    document.getElementById('estimated').value = timeData.estimated || '';
+    document.getElementById('progress').value  = timeData.progress  || 0;
+
+    // Populate member info
+    logEntries = entries;
+    if (member) {
+      currentMember = {
+        memberId: member.id,
+        name:     member.fullName || 'Unknown',
+        avatar:   member.avatarUrl ? member.avatarUrl + '/30.png' : null
+      };
+      document.getElementById('member-name').textContent = member.fullName || 'You';
+      const avatarEl = document.getElementById('member-avatar');
+      if (member.avatarUrl) {
+        avatarEl.innerHTML = `<img src="${member.avatarUrl}/30.png" alt=""/>`;
+      } else {
+        avatarEl.textContent = (member.fullName || 'U')[0].toUpperCase();
+      }
+    }
+
+    syncSpentFromLog();
+    renderLog();
+
+    if (startTab === 'team') switchTab('team');
+    t.sizeTo(document.body);
+  });
+
+  // ── Time tab logic ──
+  function updateTimeUI() {
+    const pct   = parseInt(document.getElementById('progress').value, 10);
+    const est   = parseFloat(document.getElementById('estimated').value) || 0;
+    const spent = parseFloat(document.getElementById('spent').value)     || 0;
+    const over  = est > 0 && spent > est;
+    const done  = pct === 100;
+
+    document.getElementById('pct-display').textContent = `${pct}%`;
+    const fill = document.getElementById('bar-fill');
+    fill.style.width = `${pct}%`;
+    fill.className = 'progress-bar-fill' + (done ? ' done' : '');
+
+    const chip = document.getElementById('status-chip');
+    if (over)       { chip.textContent = `⚠️ Over budget by ${(spent - est).toFixed(2)} hrs`; chip.className = 'status-chip visible over'; }
+    else if (done)  { chip.textContent = '✅ Complete!'; chip.className = 'status-chip visible done'; }
+    else            { chip.className = 'status-chip'; }
+  }
+
+  // ── Sync Hours Spent = sum of team log entries (auto, read-only) ──
+  function syncSpentFromLog() {
+    const total = logEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+    document.getElementById('spent').value = total > 0 ? total.toFixed(2) : '';
+    updateTimeUI();
+    autoSave();
+  }
+
+  // ── Auto-save with debounce (500ms after last change) ──
+  let saveTimer = null;
+  function autoSave() {
+    clearTimeout(saveTimer);
+    showSaveStatus('saving');
+    saveTimer = setTimeout(() => {
+      const data = {
+        estimated: parseFloat(document.getElementById('estimated').value) || 0,
+        spent:     parseFloat(document.getElementById('spent').value)     || 0,
+        progress:  parseInt(document.getElementById('progress').value, 10)
+      };
+      t.set('card', 'shared', 'timetrack', data).then(() => {
+        showSaveStatus('saved');
+      }).catch(() => showSaveStatus('error'));
+    }, 500);
+  }
+
+  function showSaveStatus(state) {
+    const btn = document.getElementById('save-time-btn');
+    if (state === 'saving') { btn.textContent = 'Saving…';  btn.className = 'save-btn'; }
+    if (state === 'saved')  { btn.textContent = '✓ Saved';  btn.className = 'save-btn saved'; }
+    if (state === 'error')  { btn.textContent = '⚠ Error';  btn.className = 'save-btn'; }
+  }
+
+  document.getElementById('progress').addEventListener('input', () => { updateTimeUI(); autoSave(); });
+  document.getElementById('estimated').addEventListener('input', () => { updateTimeUI(); autoSave(); });
+  // Note: 'spent' is read-only — updated via syncSpentFromLog which calls autoSave directly
+
+  // ── Team log logic ──
+  function renderLog() {
+    const list = document.getElementById('entry-list');
+    if (logEntries.length === 0) {
+      list.innerHTML = '<div class="empty-log">No entries yet. Log your first hours above.</div>';
+      return;
+    }
+    const totalHrs = logEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+    list.innerHTML = logEntries.map((e, i) => {
+      const initials  = (e.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+      const avatarHTML = e.avatar ? `<img src="${esc(e.avatar)}" alt=""/>` : initials;
+      const date = e.date ? new Date(e.date).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : '';
+      const note = e.note || date;
+      return `<div class="entry">
+        <div class="entry-avatar">${avatarHTML}</div>
+        <div class="entry-info">
+          <div class="entry-name">${esc(e.name)}</div>
+          ${note ? `<div class="entry-note">${esc(note)}</div>` : ''}
+        </div>
+        <span class="entry-hrs">${parseFloat(e.hours).toFixed(2)}h</span>
+        <button class="entry-del" data-idx="${i}" title="Delete">✕</button>
+      </div>`;
+    }).join('') + `<div class="total-row"><span>Total logged</span><span>${totalHrs.toFixed(2)} hrs</span></div>`;
+
+    list.querySelectorAll('.entry-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        logEntries.splice(parseInt(btn.dataset.idx, 10), 1);
+        t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+          syncSpentFromLog();
+          renderLog();
+        });
+      });
+    });
+  }
+
+  document.getElementById('log-btn').addEventListener('click', () => {
+    const hours = parseFloat(document.getElementById('log-hours').value);
+    const note  = document.getElementById('note').value.trim();
+    if (hours === null || hours === undefined || isNaN(hours) || document.getElementById('log-hours').value === '') { document.getElementById('log-hours').focus(); return; }
+    const entry = { ...(currentMember || { memberId: 'unknown', name: 'Unknown', avatar: null }), hours, note, date: new Date().toISOString() };
+    logEntries.push(entry);
+    t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+      document.getElementById('log-hours').value = '';
+      document.getElementById('note').value = '';
+      syncSpentFromLog();
+      renderLog();
+    });
+  });
+
+  // ── Assign tab logic ────────────────────────────────────────────────────
+  let boardMembers   = [];  // all board members
+  let assignedIds    = new Set(); // currently assigned member IDs
+  let assignLoaded   = false;
+
+  function renderAssign() {
+    if (assignLoaded) return;
+    assignLoaded = true;
+
+    Promise.all([
+      t.board('members').catch(() => null),
+      t.get('card', 'shared', 'timetrack-assigned').then(d => d || []).catch(() => []),
+      t.card('members').catch(() => null)  // Trello's native card member assignments
+    ]).then(([boardData, saved, cardData]) => {
+      boardMembers = (boardData && boardData.members ? boardData.members : []).map(m => ({
+        id:     m.id,
+        name:   m.fullName || m.username || 'Unknown',
+        avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
+      }));
+
+      if (boardMembers.length === 0) {
+        document.getElementById('assign-list').innerHTML =
+          '<div class="assign-loading">No board members found.</div>';
+        return;
+      }
+
+      // Seed from Trello's native assignments if no saved data yet
+      // t.card('members') returns [{id, avatarUrl, fullName, ...}]
+      const trelloMembers  = cardData && cardData.members ? cardData.members : [];
+      const trelloAssigned = trelloMembers.map(m => m.id).filter(Boolean);
+      const seedIds = saved.length > 0 ? saved : trelloAssigned;
+
+      // Auto-save if seeding from Trello for the first time
+      if (saved.length === 0 && trelloAssigned.length > 0) {
+        t.set('card', 'shared', 'timetrack-assigned', trelloAssigned);
+      }
+
+      assignedIds = new Set(seedIds);
+
+      const rows = boardMembers.map(m => {
+        const initials   = (m.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+        const avatarHTML = m.avatar ? `<img src="${esc(m.avatar)}" alt=""/>` : initials;
+        const checked    = assignedIds.has(m.id);
+        return `<div class="assign-row" onclick="toggleAssign('${m.id}')">
+          <div class="assign-avatar">${avatarHTML}</div>
+          <span class="assign-name">${esc(m.name)}</span>
+          <div class="assign-check ${checked ? 'checked' : ''}" id="chk-${m.id}"></div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('assign-list').innerHTML = rows;
+    });
+  }
+
+  function toggleAssign(memberId) {
+    if (assignedIds.has(memberId)) {
+      assignedIds.delete(memberId);
+    } else {
+      assignedIds.add(memberId);
+    }
+    const chk = document.getElementById('chk-' + memberId);
+    if (chk) chk.className = 'assign-check' + (assignedIds.has(memberId) ? ' checked' : '');
+    // Auto-save immediately
+    t.set('card', 'shared', 'timetrack-assigned', Array.from(assignedIds));
+  }
+
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>

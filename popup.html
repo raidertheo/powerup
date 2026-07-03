@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Track Time</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3e;
+      --accent:   #5b8dee;
+      --accent2:  #38d9a9;
+      --warn:     #ff6b6b;
+      --text:     #e8eaf0;
+      --muted:    #6b7280;
+      --radius:   10px;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      min-height: 100vh;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .field input[type="number"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 16px;
+      font-weight: 500;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color .2s;
+      -moz-appearance: textfield;
+    }
+    .field input[type="number"]::-webkit-outer-spin-button,
+    .field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .field input[type="number"]:focus { border-color: var(--accent); }
+
+    .over-budget .field input[type="number"] { border-color: var(--warn) !important; }
+
+    /* Progress section */
+    .progress-section { margin-bottom: 20px; }
+
+    .progress-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .progress-label-row label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .progress-value {
+      font-family: 'DM Mono', monospace;
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .slider-wrap {
+      position: relative;
+      height: 36px;
+      display: flex;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(91,141,238,.2);
+      cursor: pointer;
+      transition: box-shadow .15s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      box-shadow: 0 0 0 6px rgba(91,141,238,.3);
+    }
+
+    .progress-bar-bg {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+      margin-bottom: 4px;
+      pointer-events: none;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .15s ease, background .3s;
+    }
+    .progress-bar-fill.done { background: var(--accent2); }
+    .progress-bar-fill.over { background: var(--warn); }
+
+    /* Status chips */
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+      opacity: 0;
+      transition: opacity .25s;
+    }
+    .status-chip.visible { opacity: 1; }
+    .status-chip.over    { background: rgba(255,107,107,.15); color: var(--warn); }
+    .status-chip.done    { background: rgba(56,217,169,.15); color: var(--accent2); }
+
+    .save-btn {
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: .02em;
+      transition: background .2s, transform .1s;
+    }
+    .save-btn:hover   { background: #4a7de0; }
+    .save-btn:active  { transform: scale(.98); }
+    .save-btn.saved   { background: var(--accent2); color: #0f1117; }
+  </style>
+</head>
+<body>
+<h2>⏱ Time Tracking</h2>
+
+<div class="fields">
+  <div class="field">
+    <label>Estimated Hours</label>
+    <input type="number" id="estimated" min="0" step="0.25" placeholder="0" />
+  </div>
+  <div class="field">
+    <label>Hours Spent</label>
+    <input type="number" id="spent" min="0" step="0.25" placeholder="0" />
+  </div>
+</div>
+
+<div class="progress-section">
+  <div class="progress-label-row">
+    <label>% Complete</label>
+    <span class="progress-value" id="pct-display">0%</span>
+  </div>
+  <div class="progress-bar-bg">
+    <div class="progress-bar-fill" id="bar-fill" style="width:0%"></div>
+  </div>
+  <div class="slider-wrap">
+    <input type="range" id="progress" min="0" max="100" step="1" value="0" />
+  </div>
+</div>
+
+<div class="status-chip" id="status-chip"></div>
+
+<button class="save-btn" id="save-btn">Save</button>
+
+<script>
+  const t = TrelloPowerUp.iframe({
+    appKey:  'ed700e2887fc04558ed3a0efa61f25b6',  // Same key as index.html
+    appName: 'TimeTrack'
+  });
+
+  const estEl   = document.getElementById('estimated');
+  const spentEl = document.getElementById('spent');
+  const slider  = document.getElementById('progress');
+  const pctDisp = document.getElementById('pct-display');
+  const barFill  = document.getElementById('bar-fill');
+  const chip    = document.getElementById('status-chip');
+  const saveBtn  = document.getElementById('save-btn');
+
+  // Load existing data
+  t.get('card', 'shared', 'timetrack').then(d => {
+    if (d) {
+      estEl.value   = d.estimated || '';
+      spentEl.value = d.spent     || '';
+      slider.value  = d.progress  || 0;
+    }
+    updateUI();
+  });
+
+  function updateUI() {
+    const pct   = parseInt(slider.value, 10);
+    const est   = parseFloat(estEl.value)   || 0;
+    const spent = parseFloat(spentEl.value) || 0;
+    const over  = est > 0 && spent > est;
+    const done  = pct === 100;
+
+    pctDisp.textContent = `${pct}%`;
+    barFill.style.width = `${pct}%`;
+    barFill.className   = 'progress-bar-fill' + (done ? ' done' : over ? ' over' : '');
+
+    if (over) {
+      chip.textContent  = `⚠️ Over budget by ${(spent - est).toFixed(2)} hrs`;
+      chip.className    = 'status-chip visible over';
+    } else if (done) {
+      chip.textContent  = '✅ Complete!';
+      chip.className    = 'status-chip visible done';
+    } else {
+      chip.className    = 'status-chip';
+    }
+
+    t.sizeTo(document.body);
+  }
+
+  slider.addEventListener('input', updateUI);
+  estEl.addEventListener('input', updateUI);
+  spentEl.addEventListener('input', updateUI);
+
+  saveBtn.addEventListener('click', () => {
+    const data = {
+      estimated: parseFloat(estEl.value)   || 0,
+      spent:     parseFloat(spentEl.value) || 0,
+      progress:  parseInt(slider.value, 10)
+    };
+    t.set('card', 'shared', 'timetrack', data).then(() => {
+      saveBtn.textContent = '✓ Saved!';
+      saveBtn.classList.add('saved');
+      setTimeout(() => t.closePopup(), 900);
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Team Time Log</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3e;
+      --accent:  #5b8dee;
+      --purple:  #a78bfa;
+      --warn:    #ff6b6b;
+      --text:    #e8eaf0;
+      --muted:   #6b7280;
+      --radius:  10px;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); padding: 16px; }
+
+    h2 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+    /* Member info strip */
+    .member-strip {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 12px; margin-bottom: 16px;
+    }
+    .member-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--accent); display: flex; align-items: center;
+      justify-content: center; font-size: 14px; font-weight: 600;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .member-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .member-name { font-size: 14px; font-weight: 600; }
+    .member-sub  { font-size: 11px; color: var(--muted); }
+
+    /* Log entry form */
+    .log-form { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 20px; align-items: end; }
+    .field label {
+      display: block; font-size: 11px; font-weight: 500; color: var(--muted);
+      margin-bottom: 6px; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .field input[type="number"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 16px; font-weight: 500;
+      padding: 10px 12px; outline: none; transition: border-color .2s;
+      -moz-appearance: textfield;
+    }
+    .field input[type="number"]::-webkit-outer-spin-button,
+    .field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .field input[type="number"]:focus { border-color: var(--accent); }
+    .field input[type="text"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Sans', sans-serif; font-size: 13px;
+      padding: 10px 12px; outline: none; transition: border-color .2s;
+    }
+    .field input[type="text"]:focus { border-color: var(--accent); }
+
+    .log-btn {
+      padding: 10px 16px; background: var(--accent); border: none;
+      border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif;
+      font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+      transition: background .2s; height: 42px;
+    }
+    .log-btn:hover { background: #4a7de0; }
+
+    /* Existing log entries */
+    .section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+    }
+    .entry-list { display: flex; flex-direction: column; gap: 6px; }
+    .entry {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px;
+    }
+    .entry-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--purple); display: flex; align-items: center;
+      justify-content: center; font-size: 11px; font-weight: 600;
+      flex-shrink: 0; overflow: hidden;
+    }
+    .entry-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-info { flex: 1; min-width: 0; }
+    .entry-name { font-size: 12px; font-weight: 600; }
+    .entry-note { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-hrs {
+      font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+      color: var(--accent); flex-shrink: 0;
+    }
+    .entry-del {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 14px; padding: 0 2px; flex-shrink: 0;
+      transition: color .15s;
+    }
+    .entry-del:hover { color: var(--warn); }
+
+    .empty-log { font-size: 12px; color: var(--muted); text-align: center; padding: 12px; }
+    .total-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0 0; border-top: 1px solid var(--border); margin-top: 8px;
+      font-size: 12px; color: var(--muted);
+    }
+    .total-row span:last-child {
+      font-family: 'DM Mono', monospace; font-weight: 500; color: var(--text);
+    }
+  </style>
+</head>
+<body>
+<h2>👥 Team Time Log</h2>
+
+<div class="member-strip" id="member-strip">
+  <div class="member-avatar" id="member-avatar">?</div>
+  <div>
+    <div class="member-name" id="member-name">Loading…</div>
+    <div class="member-sub">Logging as you</div>
+  </div>
+</div>
+
+<div class="log-form">
+  <div class="field" style="grid-column:1/-1">
+    <label>Note (optional)</label>
+    <input type="text" id="note" placeholder="e.g. Code review, Bug fix…" maxlength="80"/>
+  </div>
+  <div class="field">
+    <label>Hours to Log</label>
+    <input type="number" id="hours" min="0.25" step="0.25" placeholder="0"/>
+  </div>
+  <button class="log-btn" id="log-btn">+ Log</button>
+</div>
+
+<div class="section-label">Log History</div>
+<div class="entry-list" id="entry-list"></div>
+
+<script>
+  const t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
+
+  let currentMember = null;
+  let logEntries    = [];
+
+  // Load member profile + existing log
+  Promise.all([
+    t.member('id', 'fullName', 'avatar').catch(() => null),
+    t.get('card', 'shared', 'timetrack-members').then(d => d || []).catch(() => [])
+  ]).then(([member, entries]) => {
+    logEntries = entries;
+
+    if (member) {
+      currentMember = {
+        memberId: member.id,
+        name:     member.fullName || 'Unknown',
+        avatar:   member.avatarUrl ? member.avatarUrl + '/30.png' : null
+      };
+      document.getElementById('member-name').textContent = member.fullName || 'You';
+      const avatarEl = document.getElementById('member-avatar');
+      if (member.avatarUrl) {
+        avatarEl.innerHTML = `<img src="${member.avatarUrl}/30.png" alt=""/>`;
+      } else {
+        avatarEl.textContent = (member.fullName || 'U')[0].toUpperCase();
+      }
+    }
+
+    renderLog();
+    t.sizeTo(document.body);
+  });
+
+  function renderLog() {
+    const list = document.getElementById('entry-list');
+    if (logEntries.length === 0) {
+      list.innerHTML = '<div class="empty-log">No entries yet. Log your first hours above.</div>';
+      t.sizeTo(document.body);
+      return;
+    }
+
+    const totalHrs = logEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+
+    list.innerHTML = logEntries.map((e, i) => {
+      const initials = (e.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+      const avatarHTML = e.avatar
+        ? `<img src="${e.avatar}" alt=""/>`
+        : initials;
+      const date = e.date ? new Date(e.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const note = e.note ? e.note : date;
+      return `
+        <div class="entry">
+          <div class="entry-avatar">${avatarHTML}</div>
+          <div class="entry-info">
+            <div class="entry-name">${esc(e.name)}</div>
+            ${note ? `<div class="entry-note">${esc(note)}</div>` : ''}
+          </div>
+          <span class="entry-hrs">${parseFloat(e.hours).toFixed(2)}h</span>
+          <button class="entry-del" data-idx="${i}" title="Delete entry">✕</button>
+        </div>
+      `;
+    }).join('') + `
+      <div class="total-row">
+        <span>Total logged</span>
+        <span>${totalHrs.toFixed(2)} hrs</span>
+      </div>
+    `;
+
+    // Delete buttons
+    list.querySelectorAll('.entry-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        logEntries.splice(idx, 1);
+        t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+          renderLog();
+          t.sizeTo(document.body);
+        });
+      });
+    });
+
+    t.sizeTo(document.body);
+  }
+
+  document.getElementById('log-btn').addEventListener('click', () => {
+    const hours = parseFloat(document.getElementById('hours').value);
+    const note  = document.getElementById('note').value.trim();
+    if (!hours || hours <= 0) {
+      document.getElementById('hours').focus();
+      return;
+    }
+
+    const entry = {
+      ...(currentMember || { memberId: 'unknown', name: 'Unknown', avatar: null }),
+      hours,
+      note,
+      date: new Date().toISOString()
+    };
+
+    logEntries.push(entry);
+    t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+      document.getElementById('hours').value = '';
+      document.getElementById('note').value  = '';
+      renderLog();
+      t.sizeTo(document.body);
+    });
+  });
+
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>TimeTrack Export</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg:#0f1117; --surface:#1a1d27; --border:#2a2d3e; --accent:#5b8dee; --accent2:#38d9a9; --text:#e8eaf0; --muted:#6b7280; --radius:10px; }
+    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); padding:20px; display:flex; flex-direction:column; gap:12px; }
+    h2 { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+    .status { font-size:13px; color:var(--muted); }
+    .status.ok  { color:var(--accent2); }
+    .status.err { color:#ff6b6b; }
+    .progress-bar-bg { height:4px; border-radius:2px; background:var(--border); overflow:hidden; }
+    .progress-bar-fill { height:100%; border-radius:2px; background:var(--accent); transition:width .3s; }
+    .count { font-family:'DM Mono',monospace; font-size:22px; font-weight:700; color:var(--accent2); }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; background:var(--accent); border:none; border-radius:var(--radius); color:#fff; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:background .2s; }
+    .btn:hover { background:#4a7de0; }
+  </style>
+</head>
+<body>
+  <h2><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export to CSV</h2>
+  <p class="status" id="status">Loading card index…</p>
+  <div class="progress-bar-bg" id="pb-bg" style="display:none"><div class="progress-bar-fill" id="pb-fill" style="width:0%"></div></div>
+  <div id="ready" style="display:none">
+    <p style="margin-bottom:10px"><span class="count" id="row-count">0</span> <span style="font-size:12px;color:var(--muted)">cards ready</span></p>
+    <a class="btn" id="dl-link" download="timetrack-export.csv">Download CSV</a>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px">Opens directly in Excel.</p>
+  </div>
+
+<script>
+  var t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
+  var NL = String.fromCharCode(10);
+
+  function setStatus(msg, cls) {
+    var el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+    t.sizeTo(document.body);
+  }
+
+  function setProgress(done, total) {
+    document.getElementById('pb-bg').style.display = 'block';
+    document.getElementById('pb-fill').style.width = Math.round((done/total)*100) + '%';
+    setStatus('Fetching card data… ' + done + ' / ' + total);
+  }
+
+  function buildCSV(rows) {
+    var headers = ['Type','Item','Phase','Est Hour','Worked Hours','Status','Resource','Notes'];
+    function cell(val) {
+      var s = (val === null || val === undefined) ? '' : String(val);
+      return (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf(NL) >= 0)
+        ? '"' + s.replace(/"/g,'""') + '"' : s;
+    }
+    return [headers].concat(rows).map(function(row){
+      return row.map(cell).join(',');
+    }).join(NL);
+  }
+
+  function showReady(rows) {
+    var csv = buildCSV(rows);
+    document.getElementById('dl-link').href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    document.getElementById('row-count').textContent = rows.length;
+    document.getElementById('pb-bg').style.display = 'none';
+    document.getElementById('ready').style.display = 'block';
+    setStatus('Ready — ' + rows.length + ' cards.', 'ok');
+  }
+
+  // Step 1: Load card index from storage (saved by index.html)
+  t.get('board', 'private', 'export-index-meta').then(function(meta) {
+    if (!meta || !meta.chunks || meta.total === 0) {
+      setStatus('No index found. Click "Export CSV" in the board toolbar first.', 'err');
+      return;
+    }
+
+    setStatus('Loading ' + meta.total + ' cards…');
+
+    // Load all chunks
+    var chunkPromises = [];
+    for (var i = 0; i < meta.chunks; i++) {
+      chunkPromises.push(t.get('board', 'private', 'export-index-' + i).catch(function(){ return []; }));
+    }
+
+    return Promise.all(chunkPromises).then(function(chunks) {
+      var cardIndex = [];
+      chunks.forEach(function(c){ cardIndex = cardIndex.concat(c || []); });
+
+      if (cardIndex.length === 0) {
+        setStatus('No cards found in index.', 'err');
+        return;
+      }
+
+      // Step 2: fetch timetrack data for each card sequentially via t.get()
+      var rows = [];
+      var done = 0;
+      setProgress(0, cardIndex.length);
+
+      return cardIndex.reduce(function(chain, entry) {
+        return chain.then(function() {
+          var cardId      = entry[0];
+          var listName    = entry[1];
+          var cardName    = entry[2];
+          var phase       = entry[3];
+          var memberNames = entry[4] ? entry[4].split('|').filter(Boolean) : [];
+
+          return Promise.all([
+            t.get(cardId, 'shared', 'timetrack').catch(function(){ return {}; }),
+            t.get(cardId, 'shared', 'timetrack-members').catch(function(){ return []; }),
+            t.get(cardId, 'shared', 'timetrack-assigned').catch(function(){ return []; })
+          ]).then(function(res) {
+            var data     = res[0] || {};
+            var log      = res[1] || [];
+            var assigned = res[2] || [];
+            var est      = parseFloat(data.estimated) || 0;
+
+            // Only include cards with estimated hours
+            if (est > 0) {
+              // Get assigned member names from log
+              var logMemberMap = {};
+              log.forEach(function(e) {
+                if (e.memberId && e.name) logMemberMap[e.memberId] = e.name;
+              });
+              var assignedNames = assigned.map(function(mid) {
+                return logMemberMap[mid] || '';
+              }).filter(Boolean);
+
+              var allNames = memberNames.concat(assignedNames).filter(function(n,i,a){
+                return a.indexOf(n) === i;
+              });
+
+              var notes = log.map(function(e){ return e.note||''; }).filter(Boolean).join('; ');
+
+              rows.push([
+                listName,
+                cardName,
+                phase,
+                est,
+                parseFloat(data.spent) || 0,
+                allNames.length > 0 ? 'Assigned' : 'Unassigned',
+                allNames.length > 0 ? allNames.join(', ') : 'TBD',
+                notes
+              ]);
+            }
+
+            done++;
+            if (done % 5 === 0 || done === cardIndex.length) {
+              setProgress(done, cardIndex.length);
+            }
+          });
+        });
+      }, Promise.resolve()).then(function() {
+        showReady(rows);
+      });
+    });
+
+  }).catch(function(err) {
+    setStatus('Error: ' + (err.message || 'unknown'), 'err');
+  });
+</script>
+</body>
+</html>
