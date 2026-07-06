@@ -331,57 +331,97 @@ function openBoardSummary(t) {
 
 // ─── Export (runs in connector context — has full board access) ──────────────────
 function openExportPopup(t) {
-  // Store only card metadata (IDs + static fields) — small enough to fit in storage
-  // export.html then fetches timetrack data per card using t.get()
-  return Promise.all([
-    t.lists('id', 'name'),
-    t.cards('all')
-  ]).then(function(r) {
-    var lists    = r[0] || [];
-    var allCards = r[1] || [];
+  // Build the full export dataset in the CONNECTOR context (has reliable
+  // access to every card's plugin data), then hand it to export.html via
+  // localStorage — both files share the same origin, so this bypasses
+  // Trello's 8KB per-key plugin-data limit entirely.
+  return t.board('id').then(function(board) {
+    var boardId = board.id;
 
-    var listNameMap = {};
-    lists.forEach(function(l) { listNameMap[l.id] = l.name; });
+    return Promise.all([
+      t.lists('id', 'name'),
+      t.cards('all')
+    ]).then(function(r) {
+      var lists    = r[0] || [];
+      var allCards = r[1] || [];
 
-    // Build minimal card index — just IDs and static metadata
-    var cardIndex = allCards
-      .filter(function(c) { return listNameMap[c.idList] !== 'Resources'; })
-      .map(function(card) {
+      var listNameMap = {};
+      lists.forEach(function(l) { listNameMap[l.id] = l.name; });
+
+      var filtered = allCards.filter(function(c) {
+        return listNameMap[c.idList] !== 'Resources';
+      });
+      // Attach resolved list name directly onto each card object
+      filtered.forEach(function(c) { c._listName = listNameMap[c.idList] || ''; });
+
+      console.log('Export: fetching data for', filtered.length, 'cards (connector context)');
+
+      // Sequential fetch — proven reliable from connector context
+      var results = [];
+      return filtered.reduce(function(chain, card) {
+        return chain.then(function() {
+          return Promise.all([
+            t.get(card.id, 'shared', 'timetrack').catch(function(){ return {}; }),
+            t.get(card.id, 'shared', 'timetrack-members').catch(function(){ return []; }),
+            t.get(card.id, 'shared', 'timetrack-assigned').catch(function(){ return []; })
+          ]).then(function(res) {
+            results.push({ card: card, data: res[0]||{}, log: res[1]||[], assigned: res[2]||[] });
+          });
+        });
+      }, Promise.resolve()).then(function() { return results; });
+
+    }).then(function(cardData) {
+      var memberNameMap = {};
+      cardData.forEach(function(item) {
+        (item.log||[]).forEach(function(e) {
+          if (e.memberId && e.name) memberNameMap[e.memberId] = e.name;
+        });
+      });
+
+      var rows = [];
+      cardData.forEach(function(item) {
+        var card   = item.card;
+        var data   = item.data || {};
+        var log    = item.log  || [];
+        var est    = parseFloat(data.estimated) || 0;
+        if (est <= 0) return; // only cards with estimated hours
+
         var labels = card.labels || [];
         var phase  = '';
         for (var i = 0; i < labels.length; i++) {
           if (labels[i].name === 'Phase 1') { phase = 'Phase 1'; break; }
           if (labels[i].name === 'Phase 2') { phase = 'Phase 2'; }
         }
-        var members = (card.members || []).map(function(m) {
-          return m.fullName || m.username || '';
-        }).filter(Boolean).join('|');
-        return [card.id, listNameMap[card.idList] || '', card.name || '', phase, members];
+
+        var nativeNames   = (card.members||[]).map(function(m){ return m.fullName||m.username||''; }).filter(Boolean);
+        var assignedNames = (item.assigned||[]).map(function(mid){ return memberNameMap[mid]||''; }).filter(Boolean);
+        var allNames      = nativeNames.concat(assignedNames).filter(function(n,i,a){ return a.indexOf(n)===i; });
+        var notes         = log.map(function(e){ return e.note||''; }).filter(Boolean).join('; ');
+
+        rows.push([
+          card._listName || '',
+          card.name || '',
+          phase,
+          est,
+          parseFloat(data.spent) || 0,
+          allNames.length > 0 ? 'Assigned' : 'Unassigned',
+          allNames.length > 0 ? allNames.join(', ') : 'TBD',
+          notes
+        ]);
       });
 
-    console.log('Export: card index built,', cardIndex.length, 'cards');
+      console.log('Export: built', rows.length, 'rows with estimated hours');
 
-    // Store index in chunks of 20 cards — each entry is ~100 chars, 20 = ~2KB
-    var CHUNK = 20;
-    var chunks = [];
-    for (var i = 0; i < cardIndex.length; i += CHUNK) {
-      chunks.push(cardIndex.slice(i, i + CHUNK));
-    }
-
-    var chain = Promise.resolve();
-    chunks.forEach(function(chunk, idx) {
-      chain = chain.then(function() {
-        return t.set('board', 'private', 'export-index-' + idx, chunk);
-      });
-    });
-    chain = chain.then(function() {
-      return t.set('board', 'private', 'export-index-meta', {
-        total: cardIndex.length, chunks: chunks.length
-      });
-    });
-
-    return chain.then(function() {
-      console.log('Export: index saved,', chunks.length, 'chunks');
+      // Write to localStorage — shared across iframes on the same origin
+      try {
+        localStorage.setItem('timetrack-export-' + boardId, JSON.stringify({
+          rows: rows,
+          builtAt: Date.now()
+        }));
+        console.log('Export: saved to localStorage, key=timetrack-export-' + boardId);
+      } catch (e) {
+        console.error('Export: localStorage write failed', e);
+      }
     });
 
   }).then(function() {
@@ -391,6 +431,7 @@ function openExportPopup(t) {
     return t.popup({ title: 'Export to CSV', url: './export.html', height: 280 });
   });
 }
+
 
 // ─── Board Buttons ────────────────────────────────────────────────────────────
 function boardButtons(t) {
