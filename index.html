@@ -109,10 +109,14 @@ function openBoardSummary(t) {
 
       // Build lookup maps from card data
       const cardLabelMap    = {};
-      const trelloMemberMap = {}; // cardId -> [{name}] from Trello native members
+      const trelloMemberMap = {}; // cardId -> [{id, name, avatar}] from Trello native card.members
       cards.forEach(card => {
         cardLabelMap[card.id]    = card.labels  || [];
-        trelloMemberMap[card.id] = (card.members || []).map(m => m.fullName || m.username || '').filter(Boolean);
+        trelloMemberMap[card.id] = (card.members || []).map(m => ({
+          id:     m.id,
+          name:   m.fullName || m.username || '',
+          avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
+        })).filter(m => m.name);
       });
 
       return Promise.all(promises).then(cardData => {
@@ -161,17 +165,31 @@ function openBoardSummary(t) {
               labelMap[lbl.id].pctSum += pct;
               labelMap[lbl.id].count++;
             });
-            // Per assigned member (from Power-Up Assign tab)
-            (assignedIds || []).forEach(mid => {
-              const info = memberInfoFromLog[mid] || { name: null, avatar: null };
-              if (!memberMap[mid]) {
-                memberMap[mid] = { name: info.name, avatar: info.avatar, estimated: 0, hoursLogged: 0, entries: 0, cardCount: 0 };
+            // Per member — merge Trello's native card.members with Power-Up
+            // Assign-tab assignments, deduplicated by member ID
+            const nativeMembers = trelloMemberMap[id] || [];
+            const assignedMembers = (assignedIds || []).map(mid => ({
+              id: mid,
+              name: (memberInfoFromLog[mid] && memberInfoFromLog[mid].name) || null,
+              avatar: (memberInfoFromLog[mid] && memberInfoFromLog[mid].avatar) || null
+            }));
+            const seenIds = new Set();
+            const combinedMembers = [];
+            nativeMembers.concat(assignedMembers).forEach(m => {
+              if (m.id && !seenIds.has(m.id)) {
+                seenIds.add(m.id);
+                combinedMembers.push(m);
               }
-              memberMap[mid].estimated += est;
-              memberMap[mid].cardCount += 1;
-              // Backfill name/avatar if we now have it
-              if (!memberMap[mid].name && info.name) memberMap[mid].name = info.name;
-              if (!memberMap[mid].avatar && info.avatar) memberMap[mid].avatar = info.avatar;
+            });
+
+            combinedMembers.forEach(m => {
+              if (!memberMap[m.id]) {
+                memberMap[m.id] = { name: m.name, avatar: m.avatar, estimated: 0, hoursLogged: 0, entries: 0, cardCount: 0 };
+              }
+              memberMap[m.id].estimated += est;
+              memberMap[m.id].cardCount += 1;
+              if (!memberMap[m.id].name && m.name) memberMap[m.id].name = m.name;
+              if (!memberMap[m.id].avatar && m.avatar) memberMap[m.id].avatar = m.avatar;
             });
           }
           // Per log entry — accumulate hours and ensure member exists in map
@@ -227,7 +245,7 @@ function openBoardSummary(t) {
             const est       = parseFloat(data.estimated) || 0;
             const spent     = parseFloat(data.spent)     || 0;
             const progress  = parseInt(data.progress, 10) || 0;
-            const nativeNames   = trelloMemberMap[card.id] || [];
+            const nativeNames   = (trelloMemberMap[card.id] || []).map(m => m.name);
             const assignedNames = assignedIds.map(mid => memberNameMap[mid]).filter(Boolean);
             const allNames      = nativeNames.concat(assignedNames).filter((n, i, arr) => arr.indexOf(n) === i);
             const assigned      = allNames.length > 0;
@@ -249,7 +267,7 @@ function openBoardSummary(t) {
             .map(l => ({ id: l.id, name: l.name })),
           members,
           memberCards: (() => {
-            // Group cards by assigned member for drill-down
+            // Group cards by member (native Trello assignment + Power-Up Assign tab) for drill-down
             const mc = {};
             cardData.forEach(({ id, listId, data, log, assignedIds }) => {
               const cardObj2 = cards.find(c => c.id === id); const cardName = cardObj2 ? cardObj2.name : '';
@@ -257,8 +275,21 @@ function openBoardSummary(t) {
               const est      = parseFloat(data.estimated) || 0;
               const spent    = parseFloat(data.spent)     || 0;
               const progress = parseInt(data.progress, 10) || 0;
-              (assignedIds || []).forEach(mid => {
-                const mname = memberNameMap[mid] || mid;
+
+              // Merge native card members + Power-Up assigned members, dedupe by id
+              const nativeMembers = trelloMemberMap[id] || [];
+              const assignedMembers = (assignedIds || []).map(mid => ({
+                id: mid,
+                name: memberNameMap[mid] || mid
+              }));
+              const seenIds = new Set();
+              const combined = [];
+              nativeMembers.concat(assignedMembers).forEach(m => {
+                if (m.id && !seenIds.has(m.id)) { seenIds.add(m.id); combined.push(m); }
+              });
+
+              combined.forEach(m => {
+                const mname = m.name || memberNameMap[m.id] || m.id;
                 if (!mc[mname]) mc[mname] = {};
                 if (!mc[mname][listName]) mc[mname][listName] = [];
                 mc[mname][listName].push({ cardName, est, spent, progress });
