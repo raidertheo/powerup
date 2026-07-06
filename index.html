@@ -289,11 +289,19 @@ function openBoardSummary(t) {
           allLists:    summary.allLists
         };
         // Flatten memberCards into rows: [memberName, listName, cardName, est, spent, progress]
+        // Truncate strings to keep each row small and predictable in size
         const memberCardRows = [];
         Object.entries(summary.memberCards || {}).forEach(([memberName, lists]) => {
           Object.entries(lists).forEach(([listName, cards]) => {
             cards.forEach(c => {
-              memberCardRows.push([memberName, listName, c.cardName, c.est, c.spent, c.progress]);
+              memberCardRows.push([
+                String(memberName).substring(0, 30),
+                String(listName).substring(0, 30),
+                String(c.cardName || '').substring(0, 50),
+                c.est || 0,
+                c.spent || 0,
+                c.progress || 0
+              ]);
             });
           });
         });
@@ -315,35 +323,49 @@ function openBoardSummary(t) {
         const rowsJson = JSON.stringify(compactRows);
         console.log('cardRows size:', rowsJson.length, 'chars,', compactRows.length, 'rows');
 
-        // Save in batches of 20 rows if needed
-        const BATCH = 20;
+        // Save in batches of 10 rows — safer margin under 8KB
+        const BATCH = 10;
         const batches = [];
         for (let i = 0; i < compactRows.length; i += BATCH) {
           batches.push(compactRows.slice(i, i + BATCH));
         }
 
-        // Batch memberCardRows too — each row is short, so use a bigger batch size
-        const MC_BATCH = 15;
+        // Batch memberCardRows too — keep small since strings can vary in length
+        const MC_BATCH = 8;
         const mcBatches = [];
         for (let i = 0; i < memberCardRows.length; i += MC_BATCH) {
           mcBatches.push(memberCardRows.slice(i, i + MC_BATCH));
         }
 
-        const savePromises = [
-          t.set('board', 'private', 'timetrack-summary', coreSummary),
-          t.set('board', 'private', 'timetrack-rowcount', { count: compactRows.length, batches: batches.length }),
-          t.set('board', 'private', 'timetrack-mccount', { count: memberCardRows.length, batches: mcBatches.length })
-        ];
+        // Save everything SEQUENTIALLY, logging size before each save, so a
+        // single oversized key can't abort the others and we can see exactly
+        // which key is too large if it happens again.
+        function sizeOf(obj) { return JSON.stringify(obj).length; }
+
+        function saveKey(key, value) {
+          const size = sizeOf(value);
+          console.log('Saving', key, '—', size, 'chars');
+          if (size > 8000) {
+            console.warn('SKIPPING', key, '— exceeds safe size (', size, 'chars )');
+            return Promise.resolve();
+          }
+          return t.set('board', 'private', key, value).catch(err => {
+            console.error('Failed to save', key, ':', err.message || err);
+          });
+        }
+
+        let chain = saveKey('timetrack-summary', coreSummary);
+        chain = chain.then(() => saveKey('timetrack-rowcount', { count: compactRows.length, batches: batches.length }));
         batches.forEach((batch, idx) => {
-          savePromises.push(t.set('board', 'private', 'timetrack-rows-' + idx, batch));
+          chain = chain.then(() => saveKey('timetrack-rows-' + idx, batch));
         });
+        chain = chain.then(() => saveKey('timetrack-mccount', { count: memberCardRows.length, batches: mcBatches.length }));
         mcBatches.forEach((batch, idx) => {
-          savePromises.push(t.set('board', 'private', 'timetrack-mc-' + idx, batch));
+          chain = chain.then(() => saveKey('timetrack-mc-' + idx, batch));
         });
 
-        return Promise.all(savePromises).catch(err => {
-          console.error('Storage save error:', err);
-          return t.set('board', 'private', 'timetrack-summary', coreSummary);
+        return chain.then(() => {
+          console.log('Export/Summary: all saves attempted (see individual logs above for any skipped keys)');
         });
       });
     });
