@@ -638,75 +638,42 @@
   }
 
   // ── Load ─────────────────────────────────────────────────────────────────
-  Promise.all([
-    t.get('board', 'private', 'timetrack-summary'),
-    t.get('board', 'private', 'timetrack-rowcount').catch(function() { return null; }),
-    t.get('board', 'shared',  'timetrack-list-colors').catch(function() { return {}; })
-  ]).then(function(results) {
-    var summary   = results[0];
-    var rowCount  = results[1];
-    var colors    = results[2] || {};
-    listColors = colors;
-    if (!summary) {
+  // Summary data (lists, members, labels, cardRows, memberCards) now lives in
+  // localStorage — shared origin with index.html — since Trello's board-private
+  // plugin storage has a combined 8192-char cap across ALL keys, not per key,
+  // and quickly overflows once real board data is involved.
+  t.board('id').then(function(board) {
+    var raw = null;
+    try {
+      raw = localStorage.getItem('timetrack-summary-' + board.id);
+    } catch (e) {
       document.getElementById('container').innerHTML =
-        '<div class="empty">No tracked cards yet.<br>Open a card and click "TimeTrack" to get started.</div>';
+        '<div class="empty">Could not access local storage.</div>';
       return;
     }
-    summaryData = summary;
-    summaryData.allLists = summary.allLists || [];
 
-    // Load batched card rows AND member-card drill-down rows together
-    var numBatches   = rowCount ? rowCount.batches : 0;
-    var loadCardRows = numBatches === 0 ? Promise.resolve([]) : (function() {
-      var batchPromises = [];
-      for (var i = 0; i < numBatches; i++) {
-        batchPromises.push(t.get('board', 'private', 'timetrack-rows-' + i).catch(function() { return []; }));
+    t.get('board', 'shared', 'timetrack-list-colors').catch(function() { return {}; }).then(function(colors) {
+      listColors = colors || {};
+
+      if (!raw) {
+        document.getElementById('container').innerHTML =
+          '<div class="empty">No tracked cards yet.<br>Open a card and click "TimeTrack" to get started.</div>';
+        return;
       }
-      return Promise.all(batchPromises).then(function(batches) {
-        var compact = [];
-        batches.forEach(function(b) { compact = compact.concat(b || []); });
-        return compact.map(function(r) {
-          return {
-            listName:    r[0] || '',
-            cardName:    r[1] || '',
-            phase:       r[2] || '',
-            est:         r[3] || 0,
-            spent:       r[4] || 0,
-            assigned:    r[5] === 1,
-            memberNames: r[6] ? r[6].split('|').filter(Boolean) : [],
-            notes:       r[7] || ''
-          };
-        });
-      });
-    })();
 
-    var loadMemberCards = t.get('board', 'private', 'timetrack-mccount').catch(function() { return null; }).then(function(mcMeta) {
-      if (!mcMeta || !mcMeta.batches) return {};
-      var mcPromises = [];
-      for (var i = 0; i < mcMeta.batches; i++) {
-        mcPromises.push(t.get('board', 'private', 'timetrack-mc-' + i).catch(function() { return []; }));
+      try {
+        var summary = JSON.parse(raw);
+        summaryData = summary;
+        summaryData.allLists    = summary.allLists    || [];
+        summaryData.cardRows    = summary.cardRows    || [];
+        summaryData.memberCards = summary.memberCards || {};
+        renderAll(summary);
+      } catch (e) {
+        document.getElementById('container').innerHTML =
+          '<div class="empty">Error parsing summary data.</div>';
+        console.error(e);
       }
-      return Promise.all(mcPromises).then(function(batches) {
-        var flat = [];
-        batches.forEach(function(b) { flat = flat.concat(b || []); });
-        // Reconstruct nested { memberName: { listName: [ {cardName, est, spent, progress} ] } }
-        var mc = {};
-        flat.forEach(function(row) {
-          var memberName = row[0], listName = row[1], cardName = row[2], est = row[3], spent = row[4], progress = row[5];
-          if (!mc[memberName]) mc[memberName] = {};
-          if (!mc[memberName][listName]) mc[memberName][listName] = [];
-          mc[memberName][listName].push({ cardName: cardName, est: est, spent: spent, progress: progress });
-        });
-        return mc;
-      });
     });
-
-    Promise.all([loadCardRows, loadMemberCards]).then(function(res) {
-      summaryData.cardRows    = res[0];
-      summaryData.memberCards = res[1];
-      renderAll(summary);
-    });
-
   }).catch(function(err) {
     document.getElementById('container').innerHTML =
       '<div class="empty">Error loading summary. Please try again.</div>';
