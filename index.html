@@ -288,6 +288,16 @@ function openBoardSummary(t) {
           labels:      summary.labels,
           allLists:    summary.allLists
         };
+        // Flatten memberCards into rows: [memberName, listName, cardName, est, spent, progress]
+        const memberCardRows = [];
+        Object.entries(summary.memberCards || {}).forEach(([memberName, lists]) => {
+          Object.entries(lists).forEach(([listName, cards]) => {
+            cards.forEach(c => {
+              memberCardRows.push([memberName, listName, c.cardName, c.est, c.spent, c.progress]);
+            });
+          });
+        });
+
         // Compress cardRows to minimal arrays to stay under 8KB limit
         // Each row: [listName, cardName, phase, est, spent, assigned(0/1), memberNames, notes]
         const compactRows = (summary.cardRows || []).map(r => [
@@ -312,12 +322,23 @@ function openBoardSummary(t) {
           batches.push(compactRows.slice(i, i + BATCH));
         }
 
+        // Batch memberCardRows too — each row is short, so use a bigger batch size
+        const MC_BATCH = 15;
+        const mcBatches = [];
+        for (let i = 0; i < memberCardRows.length; i += MC_BATCH) {
+          mcBatches.push(memberCardRows.slice(i, i + MC_BATCH));
+        }
+
         const savePromises = [
           t.set('board', 'private', 'timetrack-summary', coreSummary),
-          t.set('board', 'private', 'timetrack-rowcount', { count: compactRows.length, batches: batches.length })
+          t.set('board', 'private', 'timetrack-rowcount', { count: compactRows.length, batches: batches.length }),
+          t.set('board', 'private', 'timetrack-mccount', { count: memberCardRows.length, batches: mcBatches.length })
         ];
         batches.forEach((batch, idx) => {
           savePromises.push(t.set('board', 'private', 'timetrack-rows-' + idx, batch));
+        });
+        mcBatches.forEach((batch, idx) => {
+          savePromises.push(t.set('board', 'private', 'timetrack-mc-' + idx, batch));
         });
 
         return Promise.all(savePromises).catch(err => {
