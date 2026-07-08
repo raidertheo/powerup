@@ -39,7 +39,7 @@
   }
 
   function buildCSV(rows) {
-    var headers = ['Type','Item','Phase','Est Hour','Worked Hours','Status','Resource','Notes'];
+    var headers = ['Type','Item','Item Count','Phase','Est Hour','Worked Hours','Status','Resource','Notes'];
     function cell(val) {
       var s = (val === null || val === undefined) ? '' : String(val);
       return (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf(NL) >= 0)

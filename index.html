@@ -355,7 +355,7 @@ function openExportPopup(t) {
 
     return Promise.all([
       t.lists('id', 'name'),
-      t.cards('all')
+      t.cards('all', 'checklists')
     ]).then(function(r) {
       var lists    = r[0] || [];
       var allCards = r[1] || [];
@@ -413,9 +413,19 @@ function openExportPopup(t) {
         var allNames      = nativeNames.concat(assignedNames).filter(function(n,i,a){ return a.indexOf(n)===i; });
         var notes         = log.map(function(e){ return e.note||''; }).filter(Boolean).join('; ');
 
+        // Item Count — total checklist items across all of the card's checklists.
+        // Defaults to 1 if the card has no checklists (or all are empty).
+        var checklists = card.checklists || [];
+        var itemCount  = 0;
+        checklists.forEach(function(cl) {
+          itemCount += (cl.checkItems || []).length;
+        });
+        if (itemCount === 0) itemCount = 1;
+
         rows.push([
           card._listName || '',
           card.name || '',
+          itemCount,
           phase,
           est,
           parseFloat(data.spent) || 0,
