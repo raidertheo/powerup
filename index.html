@@ -355,7 +355,10 @@ function openExportPopup(t) {
 
     return Promise.all([
       t.lists('id', 'name'),
-      t.cards('all', 'checklists')
+      t.cards('all', 'badges').catch(function(err) {
+        console.error('t.cards with badges failed, falling back to plain all:', err);
+        return t.cards('all');
+      })
     ]).then(function(r) {
       var lists    = r[0] || [];
       var allCards = r[1] || [];
@@ -413,13 +416,11 @@ function openExportPopup(t) {
         var allNames      = nativeNames.concat(assignedNames).filter(function(n,i,a){ return a.indexOf(n)===i; });
         var notes         = log.map(function(e){ return e.note||''; }).filter(Boolean).join('; ');
 
-        // Item Count — total checklist items across all of the card's checklists.
-        // Defaults to 1 if the card has no checklists (or all are empty).
-        var checklists = card.checklists || [];
-        var itemCount  = 0;
-        checklists.forEach(function(cl) {
-          itemCount += (cl.checkItems || []).length;
-        });
+        // Item Count — total checklist items across all of the card's checklists,
+        // read from Trello's card badges summary (badges.checkItems is the total
+        // count of checklist items on the card). Defaults to 1 if the card has
+        // no checklist items at all.
+        var itemCount = (card.badges && card.badges.checkItems) || 0;
         if (itemCount === 0) itemCount = 1;
 
         rows.push([
