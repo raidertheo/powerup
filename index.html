@@ -110,6 +110,8 @@ function openBoardSummary(t) {
       // Build lookup maps from card data
       const cardLabelMap    = {};
       const trelloMemberMap = {}; // cardId -> [{id, name, avatar}] from Trello native card.members
+      const listNameMapEarly = {};
+      lists.forEach(l => { listNameMapEarly[l.id] = l.name; });
       cards.forEach(card => {
         cardLabelMap[card.id]    = card.labels  || [];
         trelloMemberMap[card.id] = (card.members || []).map(m => ({
@@ -156,9 +158,9 @@ function openBoardSummary(t) {
               listMap[listId].pctSum    += pct;
               listMap[listId].count++;
             }
-            // Per label — only count cards that have estimated hours,
-            // per user request that Label tab counts reflect est-hour cards only
-            if (est > 0) {
+            // Per label — only count cards that have estimated hours AND are
+            // not in the Resources list, so this matches Export's card set exactly
+            if (est > 0 && listNameMapEarly[listId] !== 'Resources') {
               const labels = cardLabelMap[id] || [];
               labels.forEach(lbl => {
                 if (!labelMap[lbl.id]) {
@@ -454,10 +456,10 @@ function openExportPopup(t) {
     });
 
   }).then(function() {
-    return t.popup({ title: 'Export to CSV', url: './export.html', height: 280 });
+    return t.popup({ title: 'Export to Excel', url: './export.html', height: 280 });
   }).catch(function(err) {
     console.error('Export error:', err);
-    return t.popup({ title: 'Export to CSV', url: './export.html', height: 280 });
+    return t.popup({ title: 'Export to Excel', url: './export.html', height: 280 });
   });
 }
 
@@ -472,7 +474,7 @@ function boardButtons(t) {
     },
     {
       icon: 'https://cdn-icons-png.flaticon.com/512/724/724933.png',
-      text: 'Export CSV',
+      text: 'Export to Excel',
       callback: openExportPopup
     }
   ];
