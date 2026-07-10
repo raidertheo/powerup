@@ -156,15 +156,18 @@ function openBoardSummary(t) {
               listMap[listId].pctSum    += pct;
               listMap[listId].count++;
             }
-            // Per label
-            const labels = cardLabelMap[id] || [];
-            labels.forEach(lbl => {
-              if (!labelMap[lbl.id]) {
-                labelMap[lbl.id] = { name: lbl.name || lbl.color, color: lbl.color, pctSum: 0, count: 0 };
-              }
-              labelMap[lbl.id].pctSum += pct;
-              labelMap[lbl.id].count++;
-            });
+            // Per label — only count cards that have estimated hours,
+            // per user request that Label tab counts reflect est-hour cards only
+            if (est > 0) {
+              const labels = cardLabelMap[id] || [];
+              labels.forEach(lbl => {
+                if (!labelMap[lbl.id]) {
+                  labelMap[lbl.id] = { name: lbl.name || lbl.color, color: lbl.color, pctSum: 0, count: 0 };
+                }
+                labelMap[lbl.id].pctSum += pct;
+                labelMap[lbl.id].count++;
+              });
+            }
             // Per member — merge Trello's native card.members with Power-Up
             // Assign-tab assignments, deduplicated by member ID
             const nativeMembers = trelloMemberMap[id] || [];

@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <title>TimeTrack Export</title>
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -16,20 +17,23 @@
     .count { font-family:'DM Mono',monospace; font-size:22px; font-weight:700; color:var(--accent2); }
     .btn { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; background:var(--accent); border:none; border-radius:var(--radius); color:#fff; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:background .2s; }
     .btn:hover { background:#4a7de0; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
   </style>
 </head>
 <body>
-  <h2><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export to CSV</h2>
+  <h2><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export to Excel</h2>
   <p class="status" id="status">Loading…</p>
   <div id="ready" style="display:none">
     <p style="margin-bottom:10px"><span class="count" id="row-count">0</span> <span style="font-size:12px;color:var(--muted)">cards ready</span></p>
-    <a class="btn" id="dl-link" download="timetrack-export.csv">Download CSV</a>
-    <p style="font-size:11px;color:var(--muted);margin-top:8px">Opens directly in Excel.</p>
+    <button class="btn" id="dl-btn">Download Excel (.xlsx)</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px">Includes totals row and formatting.</p>
   </div>
 
 <script>
   var t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
-  var NL = String.fromCharCode(10);
+
+  var HEADERS = ['Type','Item','Item Count','Phase','Est Hour','Worked Hours','Status','Resource','Notes'];
+  var COL_ITEM_COUNT = 2, COL_EST = 4, COL_WORKED = 5;
 
   function setStatus(msg, cls) {
     var el = document.getElementById('status');
@@ -38,27 +42,69 @@
     t.sizeTo(document.body);
   }
 
-  function buildCSV(rows) {
-    var headers = ['Type','Item','Item Count','Phase','Est Hour','Worked Hours','Status','Resource','Notes'];
-    function cell(val) {
-      var s = (val === null || val === undefined) ? '' : String(val);
-      return (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf(NL) >= 0)
-        ? '"' + s.replace(/"/g,'""') + '"' : s;
-    }
-    return [headers].concat(rows).map(function(row){
-      return row.map(cell).join(',');
-    }).join(NL);
-  }
+  var currentRows = null;
 
   function showReady(rows) {
-    var csv = buildCSV(rows);
-    document.getElementById('dl-link').href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    currentRows = rows;
     document.getElementById('row-count').textContent = rows.length;
     document.getElementById('ready').style.display = 'block';
     setStatus('Ready — ' + rows.length + ' cards.', 'ok');
   }
 
-  // Read the export data directly from localStorage (shared origin with index.html)
+  function buildAndDownload(rows) {
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('TimeTrack Export');
+
+    var headerRow = ws.addRow(HEADERS);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: 'middle' };
+
+    var sumItemCount = 0, sumEst = 0, sumWorked = 0;
+    rows.forEach(function(r) {
+      ws.addRow(r);
+      sumItemCount += parseFloat(r[COL_ITEM_COUNT]) || 0;
+      sumEst       += parseFloat(r[COL_EST])        || 0;
+      sumWorked    += parseFloat(r[COL_WORKED])     || 0;
+    });
+
+    var totalRowValues = new Array(HEADERS.length).fill('');
+    totalRowValues[0] = 'TOTAL';
+    totalRowValues[COL_ITEM_COUNT] = sumItemCount;
+    totalRowValues[COL_EST]        = sumEst;
+    totalRowValues[COL_WORKED]     = sumWorked;
+    var totalRow = ws.addRow(totalRowValues);
+    totalRow.font = { bold: true };
+    totalRow.eachCell(function(cell) {
+      cell.border = { top: { style: 'thin' } };
+    });
+
+    var itemCountCol = ws.getColumn(COL_ITEM_COUNT + 1);
+    itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    ws.columns.forEach(function(col, i) {
+      var header = HEADERS[i] || '';
+      col.width = header === 'Notes' ? 40 : header === 'Item' ? 30 : header === 'Resource' ? 22 : 14;
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'timetrack-export.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    }).catch(function(err) {
+      setStatus('Error building file: ' + (err.message || 'unknown'), 'err');
+    });
+  }
+
+  document.getElementById('dl-btn').addEventListener('click', function() {
+    if (currentRows) buildAndDownload(currentRows);
+  });
+
   t.board('id').then(function(board) {
     var key = 'timetrack-export-' + board.id;
     var raw = null;
