@@ -355,11 +355,26 @@ function openExportPopup(t) {
   // access to every card's plugin data), then hand it to export.html via
   // localStorage — both files share the same origin, so this bypasses
   // Trello's 8KB per-key plugin-data limit entirely.
+
+  // Retry a t.get() call up to `retries` times before giving up, so a
+  // transient network hiccup during a long sequential fetch doesn't
+  // silently drop a card's estimated hours.
+  function getWithRetry(cardId, key, retries) {
+    return t.get(cardId, 'shared', key).catch(function(err) {
+      if (retries > 0) {
+        return new Promise(function(resolve) { setTimeout(resolve, 150); })
+          .then(function() { return getWithRetry(cardId, key, retries - 1); });
+      }
+      console.warn('Export: failed to read', key, 'for card', cardId, 'after retries:', err && err.message);
+      return null; // caller treats null as "no data" the same as {}
+    });
+  }
+
   return t.board('id').then(function(board) {
     var boardId = board.id;
 
     return Promise.all([
-      t.lists('id', 'name'),
+      t.lists('all', 'id', 'name').catch(function() { return t.lists('id', 'name'); }),
       t.cards('all', 'badges').catch(function(err) {
         console.error('t.cards with badges failed, falling back to plain all:', err);
         return t.cards('all');
@@ -368,30 +383,42 @@ function openExportPopup(t) {
       var lists    = r[0] || [];
       var allCards = r[1] || [];
 
+      console.log('Export: raw lists=', lists.length, ' raw cards=', allCards.length);
+
       var listNameMap = {};
       lists.forEach(function(l) { listNameMap[l.id] = l.name; });
 
+      var excludedByList = 0;
       var filtered = allCards.filter(function(c) {
-        return listNameMap[c.idList] !== 'Resources';
+        const keep = listNameMap[c.idList] !== 'Resources';
+        if (!keep) excludedByList++;
+        return keep;
       });
-      // Attach resolved list name directly onto each card object
       filtered.forEach(function(c) { c._listName = listNameMap[c.idList] || ''; });
 
-      console.log('Export: fetching data for', filtered.length, 'cards (connector context)');
+      console.log('Export: cards after Resources filter =', filtered.length,
+                  '(excluded', excludedByList, 'Resources cards)');
 
-      // Sequential fetch — proven reliable from connector context
+      // Sequential fetch with retry — proven reliable from connector context
       var results = [];
+      var readFailures = 0;
       return filtered.reduce(function(chain, card) {
         return chain.then(function() {
           return Promise.all([
-            t.get(card.id, 'shared', 'timetrack').catch(function(){ return {}; }),
-            t.get(card.id, 'shared', 'timetrack-members').catch(function(){ return []; }),
-            t.get(card.id, 'shared', 'timetrack-assigned').catch(function(){ return []; })
+            getWithRetry(card.id, 'timetrack', 2),
+            getWithRetry(card.id, 'timetrack-members', 2),
+            getWithRetry(card.id, 'timetrack-assigned', 2)
           ]).then(function(res) {
-            results.push({ card: card, data: res[0]||{}, log: res[1]||[], assigned: res[2]||[] });
+            if (res[0] === null) readFailures++;
+            results.push({ card: card, data: res[0] || {}, log: res[1] || [], assigned: res[2] || [] });
           });
         });
-      }, Promise.resolve()).then(function() { return results; });
+      }, Promise.resolve()).then(function() {
+        if (readFailures > 0) {
+          console.warn('Export:', readFailures, 'card(s) had unreadable timetrack data even after retries — they will show as having no estimate.');
+        }
+        return results;
+      });
 
     }).then(function(cardData) {
       var memberNameMap = {};
@@ -402,12 +429,13 @@ function openExportPopup(t) {
       });
 
       var rows = [];
+      var skippedNoEstimate = 0;
       cardData.forEach(function(item) {
         var card   = item.card;
         var data   = item.data || {};
         var log    = item.log  || [];
         var est    = parseFloat(data.estimated) || 0;
-        if (est <= 0) return; // only cards with estimated hours
+        if (est <= 0) { skippedNoEstimate++; return; } // only cards with estimated hours
 
         var labels = card.labels || [];
         var phase  = '';
@@ -441,7 +469,8 @@ function openExportPopup(t) {
         ]);
       });
 
-      console.log('Export: built', rows.length, 'rows with estimated hours');
+      console.log('Export: built', rows.length, 'rows with estimated hours (',
+                  skippedNoEstimate, 'cards skipped for having no estimate)');
 
       // Write to localStorage — shared across iframes on the same origin
       try {
