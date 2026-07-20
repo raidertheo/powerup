@@ -161,18 +161,18 @@
     { hex: '#22388e', name: 'Navy'    },
     { hex: '#8f26d8', name: 'Purple'  },
     { hex: '#6a6a6a', name: 'Gray'    },
-    { hex: '#ca6410', name: 'Orange'  },
+    { hex: '#e95817', name: 'Orange'  },
     { hex: '#af1d10', name: 'Red'     },
-    { hex: '#cc1f3b', name: 'Crimson' },
-    { hex: '#b6b914', name: 'Lime'    },
+    { hex: '#2f52ca', name: 'Blue'    },
+    { hex: '#ebce18', name: 'Yellow'  },
     { hex: '#298f91', name: 'Teal'    },
-    { hex: '#891b62', name: 'Magenta' },
+    { hex: '#e81691', name: 'Pink'    },
   ];
 
   // Default palette (fallback when no custom color set)
   const PALETTE = [
-    '#2a9245','#22388e','#8f26d8','#6a6a6a','#ca6410',
-    '#af1d10','#cc1f3b','#b6b914','#298f91','#891b62'
+    '#2a9245','#22388e','#8f26d8','#6a6a6a','#e95817',
+    '#af1d10','#2f52ca','#ebce18','#298f91','#e81691'
   ];
 
   function getListColor(listName, index) {
@@ -186,8 +186,8 @@
   // color from the same palette used for lists, so each person consistently
   // gets the same colored circle every time.
   const MEMBER_COLOR_PALETTE = [
-    '#2a9245','#22388e','#8f26d8','#6a6a6a','#ca6410',
-    '#af1d10','#cc1f3b','#b6b914','#298f91','#891b62'
+    '#2a9245','#22388e','#8f26d8','#6a6a6a','#e95817',
+    '#af1d10','#2f52ca','#ebce18','#298f91','#e81691'
   ];
 
   function memberColor(identifier) {
@@ -207,12 +207,12 @@
     { hex: '#22388e', name: 'Navy'    },
     { hex: '#8f26d8', name: 'Purple'  },
     { hex: '#6a6a6a', name: 'Gray'    },
-    { hex: '#ca6410', name: 'Orange'  },
+    { hex: '#e95817', name: 'Orange'  },
     { hex: '#af1d10', name: 'Red'     },
-    { hex: '#cc1f3b', name: 'Crimson' },
-    { hex: '#b6b914', name: 'Lime'    },
+    { hex: '#2f52ca', name: 'Blue'    },
+    { hex: '#ebce18', name: 'Yellow'  },
     { hex: '#298f91', name: 'Teal'    },
-    { hex: '#891b62', name: 'Magenta' },
+    { hex: '#e81691', name: 'Pink'    },
   ];
 
   function switchTab(tab) {
@@ -461,47 +461,25 @@
   }
 
   // ── Trello label color → hex map (all 30, 6 rows x 5 cols) ────────────────
+  // Map Trello's 10 label color families onto our custom 10-color palette.
+  // Trello has _light/_dark variants per family (Subtle/Bold rows) — these
+  // all collapse to the same custom hex since our palette only has one
+  // shade per color.
   const TRELLO_LABEL_COLORS = {
-    // Row 1 — Subtle Green/Yellow/Orange/Red/Purple
-    'green_light':   '#1f6e4a',
-    'yellow_light':  '#6b5500',
-    'orange_light':  '#8a3a00',
-    'red_light':     '#6e2222',
-    'purple_light':  '#4a1a6e',
-    // Row 2 — Green/Yellow/Orange/Red/Purple
-    'green':         '#2d8a5e',
-    'yellow':        '#8a6e00',
-    'orange':        '#a85000',
-    'red':           '#c43a2a',
-    'purple':        '#7a3ab8',
-    // Row 3 — Bold Green/Yellow/Orange/Red/Purple
-    'green_dark':    '#30d0a0',
-    'yellow_dark':   '#d4a800',
-    'orange_dark':   '#e8820a',
-    'red_dark':      '#e87878',
-    'purple_dark':   '#cc88ee',
-    // Row 4 — Subtle Blue/Sky/Lime/Pink/Black
-    'blue_light':    '#1a2a6e',
-    'sky_light':     '#1a5a6e',
-    'lime_light':    '#3a4a1a',
-    'pink_light':    '#6e1a3a',
-    'black_light':   '#5a5a6a',
-    // Row 5 — Blue/Sky/Lime/Pink/Black
-    'blue':          '#1a4ab8',
-    'sky':           '#1a7a8a',
-    'lime':          '#5a7a1a',
-    'pink':          '#c83a8a',
-    'black':         '#7a7a8a',
-    // Row 6 — Bold Blue/Sky/Lime/Pink/Black
-    'blue_dark':     '#4a7aee',
-    'sky_dark':      '#30d0d0',
-    'lime_dark':     '#88c830',
-    'pink_dark':     '#ee60b8',
-    'black_dark':    '#a0a0b0',
+    'green':        '#2a9245', 'green_light':  '#2a9245', 'green_dark':  '#2a9245',
+    'yellow':       '#ebce18', 'yellow_light': '#ebce18', 'yellow_dark': '#ebce18',
+    'orange':       '#e95817', 'orange_light': '#e95817', 'orange_dark': '#e95817',
+    'red':          '#af1d10', 'red_light':    '#af1d10', 'red_dark':    '#af1d10',
+    'purple':       '#8f26d8', 'purple_light': '#8f26d8', 'purple_dark': '#8f26d8',
+    'blue':         '#2f52ca', 'blue_light':   '#2f52ca', 'blue_dark':   '#2f52ca',
+    'sky':          '#298f91', 'sky_light':    '#298f91', 'sky_dark':    '#298f91',
+    'lime':         '#ebce18', 'lime_light':   '#ebce18', 'lime_dark':   '#ebce18',
+    'pink':         '#e81691', 'pink_light':   '#e81691', 'pink_dark':   '#e81691',
+    'black':        '#6a6a6a', 'black_light':  '#6a6a6a', 'black_dark':  '#6a6a6a',
   };
 
   function labelHex(color) {
-    return TRELLO_LABEL_COLORS[color] || '#8590a2';
+    return TRELLO_LABEL_COLORS[color] || '#6a6a6a';
   }
 
   // ── Main render ──────────────────────────────────────────────────────────
