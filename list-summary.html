@@ -178,6 +178,30 @@
     return listColors[listName] || PALETTE[index % PALETTE.length];
   }
 
+  // ── Deterministic per-member avatar color ──────────────────────────────
+  // Trello doesn't expose the actual color behind a member's initials
+  // avatar via the API — it's computed client-side and not readable. This
+  // hashes the member's name (or id, if we ever have it) into a stable
+  // color from a Trello-style palette, so each person consistently gets
+  // the same colored circle every time, in the same visual family as
+  // Trello's own avatar colors.
+  const MEMBER_COLOR_PALETTE = [
+    '#4bce97','#f5cd47','#fea362','#f87168','#9f8fef',
+    '#579dff','#60c6d2','#94c748','#e774bb','#8590a2',
+    '#1f845a','#946f00','#c25100','#c9372c','#6e5dc6',
+    '#0c66e4','#227d9b','#5b7f24','#ae4787','#626f86'
+  ];
+
+  function memberColor(identifier) {
+    const str = String(identifier || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    const idx = Math.abs(hash) % MEMBER_COLOR_PALETTE.length;
+    return MEMBER_COLOR_PALETTE[idx];
+  }
+
   function switchTab(tab) {
     activeTab = tab;
     drillMember = null;
@@ -506,14 +530,16 @@
         const cardsByList = memberCards[drillMember] || {};
         const m = (members || []).find(x => x.name === drillMember) || {};
         const initials   = (drillMember || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+        const dColor     = memberColor(drillMember);
         const avatarHTML = m.avatar ? `<img src="${esc(m.avatar)}" alt=""/>` : initials;
+        const dAvatarBg  = m.avatar ? '' : `background:${dColor};`;
 
         html += `<button class="drill-back" onclick="closeDrill()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           All Members
         </button>
         <div class="drill-member-header">
-          <div class="drill-avatar">${avatarHTML}</div>
+          <div class="drill-avatar" style="${dAvatarBg}">${avatarHTML}</div>
           <div>
             <div class="drill-name">${esc(drillMember)}</div>
             <div class="drill-sub">${Object.values(cardsByList).flat().length} card${Object.values(cardsByList).flat().length !== 1 ? 's' : ''} across ${Object.keys(cardsByList).length} list${Object.keys(cardsByList).length !== 1 ? 's' : ''}</div>
@@ -550,7 +576,9 @@
         } else {
           members.forEach(m => {
             const initials   = (m.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+            const mColor     = memberColor(m.name);
             const avatarHTML = m.avatar ? `<img src="${esc(m.avatar)}" alt=""/>` : initials;
+            const avatarBg   = m.avatar ? '' : `background:${mColor};`;
             const est        = m.estimated  || 0;
             const spent      = m.hoursLogged || 0;
             const isOver     = est > 0 && spent > est;
@@ -562,7 +590,7 @@
               : spent > 0 ? `${spent.toFixed(1)}h logged` : `${m.cardCount} assigned card${m.cardCount !== 1 ? 's' : ''}`;
             html += `
               <div class="member-card" data-member="${esc(m.name)}" onclick="openDrill(this.dataset.member)">
-                <div class="member-avatar">${avatarHTML}</div>
+                <div class="member-avatar" style="${avatarBg}">${avatarHTML}</div>
                 <div class="member-info">
                   <div class="member-name-text">${esc(m.name)}</div>
                   ${est > 0 ? `<div class="member-bar-row">
