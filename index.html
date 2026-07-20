@@ -337,6 +337,23 @@ function openBoardSummary(t) {
             console.error('localStorage save failed:', e);
           }
 
+          // Also cache the full set of board members (deduped by id) seen
+          // across every card's native Members field. card-popup.html's
+          // Assign tab reads this via localStorage (same origin) since
+          // fetching the board-wide member list directly from a card popup
+          // isn't reliably supported by the Power-Up SDK.
+          try {
+            const boardMemberDedupe = {};
+            Object.values(trelloMemberMap).forEach(list => {
+              list.forEach(m => { if (m.id) boardMemberDedupe[m.id] = m; });
+            });
+            const boardMemberList = Object.values(boardMemberDedupe);
+            localStorage.setItem('timetrack-boardmembers-' + board2.id, JSON.stringify(boardMemberList));
+            console.log('Board members cached to localStorage:', boardMemberList.length, 'members');
+          } catch (e) {
+            console.error('Board members cache save failed:', e);
+          }
+
           // Best-effort cleanup of old Trello-stored keys (ignore all errors)
           const staleKeys = [
             'timetrack-summary', 'timetrack-rowcount', 'timetrack-mccount',
@@ -477,6 +494,27 @@ function openExportPopup(t) {
 
       console.log('Export: built', rows.length, 'rows with estimated hours (',
                   skippedNoEstimate, 'cards skipped for having no estimate)');
+
+      // Also refresh the cached board-members list (used by card-popup.html's
+      // Assign tab) since this function already has every card's native
+      // Members field loaded.
+      try {
+        const boardMemberDedupe = {};
+        cardData.forEach(item => {
+          (item.card.members || []).forEach(m => {
+            if (m.id) {
+              boardMemberDedupe[m.id] = {
+                id: m.id,
+                name: m.fullName || m.username || '',
+                avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
+              };
+            }
+          });
+        });
+        localStorage.setItem('timetrack-boardmembers-' + boardId, JSON.stringify(Object.values(boardMemberDedupe)));
+      } catch (e) {
+        console.error('Export: board members cache save failed', e);
+      }
 
       // Write to localStorage — shared across iframes on the same origin
       try {

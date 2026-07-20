@@ -338,25 +338,48 @@
     assignLoaded = true;
 
     Promise.all([
-      t.members('all').catch(() => null),
+      t.board('id').catch(() => null),
       t.get('card', 'shared', 'timetrack-assigned').then(d => d || []).catch(() => []),
       t.card('members').catch(() => null)  // Trello's native card member assignments
-    ]).then(([boardMembersRaw, saved, cardData]) => {
-      boardMembers = (boardMembersRaw || []).map(m => ({
-        id:     m.id,
-        name:   m.fullName || m.username || 'Unknown',
-        avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
-      }));
+    ]).then(([board, saved, cardData]) => {
+      // Board-wide member list is cached in localStorage by index.html
+      // (built whenever Time Summary or Export runs), since fetching the
+      // full board member list directly from a card popup isn't reliably
+      // supported by the Power-Up SDK.
+      let cachedMembers = [];
+      try {
+        if (board) {
+          const raw = localStorage.getItem('timetrack-boardmembers-' + board.id);
+          if (raw) cachedMembers = JSON.parse(raw) || [];
+        }
+      } catch (e) { /* ignore, fall through to fallback below */ }
+
+      const trelloMembers = cardData && cardData.members ? cardData.members : [];
+
+      if (cachedMembers.length > 0) {
+        boardMembers = cachedMembers.map(m => ({
+          id: m.id,
+          name: m.name || 'Unknown',
+          avatar: m.avatar || null
+        }));
+      } else {
+        // Fallback: no cache yet (Time Summary/Export never run on this
+        // board). Show at least the members already assigned to this card.
+        boardMembers = trelloMembers.map(m => ({
+          id: m.id,
+          name: m.fullName || m.username || 'Unknown',
+          avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
+        }));
+      }
 
       if (boardMembers.length === 0) {
         document.getElementById('assign-list').innerHTML =
-          '<div class="assign-loading">No board members found.</div>';
+          '<div class="assign-loading">No board members found yet.<br>Open "Time Summary" from the board toolbar once, then reopen this card.</div>';
         return;
       }
 
       // Seed from Trello's native assignments if no saved data yet
       // t.card('members') returns [{id, avatarUrl, fullName, ...}]
-      const trelloMembers  = cardData && cardData.members ? cardData.members : [];
       const trelloAssigned = trelloMembers.map(m => m.id).filter(Boolean);
       const seedIds = saved.length > 0 ? saved : trelloAssigned;
 
