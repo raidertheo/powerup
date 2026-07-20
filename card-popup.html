@@ -338,11 +338,11 @@
     assignLoaded = true;
 
     Promise.all([
-      t.board('members').catch(() => null),
+      t.members('all').catch(() => null),
       t.get('card', 'shared', 'timetrack-assigned').then(d => d || []).catch(() => []),
       t.card('members').catch(() => null)  // Trello's native card member assignments
-    ]).then(([boardData, saved, cardData]) => {
-      boardMembers = (boardData && boardData.members ? boardData.members : []).map(m => ({
+    ]).then(([boardMembersRaw, saved, cardData]) => {
+      boardMembers = (boardMembersRaw || []).map(m => ({
         id:     m.id,
         name:   m.fullName || m.username || 'Unknown',
         avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
