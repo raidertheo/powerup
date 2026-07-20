@@ -340,8 +340,9 @@
     Promise.all([
       t.board('id').catch(() => null),
       t.get('card', 'shared', 'timetrack-assigned').then(d => d || []).catch(() => []),
-      t.card('members').catch(() => null)  // Trello's native card member assignments
-    ]).then(([board, saved, cardData]) => {
+      t.card('members').catch(() => null),  // Trello's native card member assignments
+      t.get('card', 'shared', 'timetrack-last-native').then(d => d || []).catch(() => [])
+    ]).then(([board, saved, cardData, lastNative]) => {
       // Board-wide member list is cached in localStorage by index.html
       // (built whenever Time Summary or Export runs), since fetching the
       // full board member list directly from a card popup isn't reliably
@@ -378,17 +379,22 @@
         return;
       }
 
-      // Seed checkbox state as the UNION of what's saved in the Power-Up
-      // and Trello's current native card members — this way a native
-      // Trello assignment always shows as checked even if a stale/older
-      // saved list doesn't happen to include that member yet.
-      const trelloAssigned = trelloMembers.map(m => m.id).filter(Boolean);
-      const seedIds = Array.from(new Set([...saved, ...trelloAssigned]));
+      // Seed checkbox state as the union of what's saved and Trello's current
+      // native card members — but first prune out anyone who WAS a native
+      // member last time we checked and no longer is, so removing someone
+      // from the card's Members field automatically unchecks them here too.
+      // Members added manually (never native) are left untouched.
+      const trelloAssigned  = trelloMembers.map(m => m.id).filter(Boolean);
+      const removedFromCard = lastNative.filter(id => !trelloAssigned.includes(id));
+      const prunedSaved     = saved.filter(id => !removedFromCard.includes(id));
+      const seedIds         = Array.from(new Set([...prunedSaved, ...trelloAssigned]));
 
-      // Persist the union if it added anything beyond what was already saved
-      if (seedIds.length !== saved.length) {
+      // Persist both the resulting assignment set and this render's native
+      // snapshot, so the next open can detect further removals correctly.
+      if (seedIds.length !== saved.length || removedFromCard.length > 0) {
         t.set('card', 'shared', 'timetrack-assigned', seedIds);
       }
+      t.set('card', 'shared', 'timetrack-last-native', trelloAssigned);
 
       assignedIds = new Set(seedIds);
 
