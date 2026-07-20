@@ -378,14 +378,16 @@
         return;
       }
 
-      // Seed from Trello's native assignments if no saved data yet
-      // t.card('members') returns [{id, avatarUrl, fullName, ...}]
+      // Seed checkbox state as the UNION of what's saved in the Power-Up
+      // and Trello's current native card members — this way a native
+      // Trello assignment always shows as checked even if a stale/older
+      // saved list doesn't happen to include that member yet.
       const trelloAssigned = trelloMembers.map(m => m.id).filter(Boolean);
-      const seedIds = saved.length > 0 ? saved : trelloAssigned;
+      const seedIds = Array.from(new Set([...saved, ...trelloAssigned]));
 
-      // Auto-save if seeding from Trello for the first time
-      if (saved.length === 0 && trelloAssigned.length > 0) {
-        t.set('card', 'shared', 'timetrack-assigned', trelloAssigned);
+      // Persist the union if it added anything beyond what was already saved
+      if (seedIds.length !== saved.length) {
+        t.set('card', 'shared', 'timetrack-assigned', seedIds);
       }
 
       assignedIds = new Set(seedIds);
