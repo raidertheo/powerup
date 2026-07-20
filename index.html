@@ -213,11 +213,15 @@ function openBoardSummary(t) {
 
         // Finalise — show ALL members who are assigned to at least one card
         // (via Trello's native Members field or the Power-Up Assign tab),
-        // regardless of whether they've personally logged hours yet
+        // regardless of whether they've personally logged hours yet.
+        // Exclude entries with no resolvable name — this happens when a
+        // member was assigned and later removed from the card/board, so
+        // Trello no longer reports them and we have no way to look up who
+        // they were; showing "Unknown Member" would just be noise.
         const members = Object.values(memberMap)
-          .filter(m => m.cardCount > 0 || m.entries > 0)
+          .filter(m => (m.cardCount > 0 || m.entries > 0) && m.name)
           .map(m => ({
-            name:        m.name || 'Unknown',
+            name:        m.name,
             avatar:      m.avatar,
             estimated:   m.estimated,
             hoursLogged: m.hoursLogged,
