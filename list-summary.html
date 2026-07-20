@@ -157,22 +157,22 @@
 
   // Trello's official label color palette (light + dark variants)
   const SWATCHES = [
-    { hex: '#1a4a2e', name: 'Forest Green' },
-    { hex: '#1a2a4a', name: 'Navy'         },
-    { hex: '#4a2070', name: 'Purple'       },
-    { hex: '#3d3d3d', name: 'Dark Gray'    },
-    { hex: '#6a3a10', name: 'Brown'        },
-    { hex: '#5a1a10', name: 'Dark Red'     },
-    { hex: '#6a1a2a', name: 'Burgundy'     },
-    { hex: '#5a5a10', name: 'Olive'        },
-    { hex: '#1a4a4a', name: 'Teal'         },
-    { hex: '#4a1a3a', name: 'Plum'         },
+    { hex: '#2a9245', name: 'Green'   },
+    { hex: '#22388e', name: 'Navy'    },
+    { hex: '#8f26d8', name: 'Purple'  },
+    { hex: '#6a6a6a', name: 'Gray'    },
+    { hex: '#ca6410', name: 'Orange'  },
+    { hex: '#af1d10', name: 'Red'     },
+    { hex: '#cc1f3b', name: 'Crimson' },
+    { hex: '#b6b914', name: 'Lime'    },
+    { hex: '#298f91', name: 'Teal'    },
+    { hex: '#891b62', name: 'Magenta' },
   ];
 
   // Default palette (fallback when no custom color set)
   const PALETTE = [
-    '#5b8dee','#38d9a9','#a78bfa','#fbbf24','#f472b6',
-    '#34d399','#60a5fa','#fb923c','#e879f9','#4ade80'
+    '#2a9245','#22388e','#8f26d8','#6a6a6a','#ca6410',
+    '#af1d10','#cc1f3b','#b6b914','#298f91','#891b62'
   ];
 
   function getListColor(listName, index) {
@@ -183,14 +183,11 @@
   // Trello doesn't expose the actual color behind a member's initials
   // avatar via the API — it's computed client-side and not readable. This
   // hashes the member's name (or id, if we ever have it) into a stable
-  // color from a Trello-style palette, so each person consistently gets
-  // the same colored circle every time, in the same visual family as
-  // Trello's own avatar colors.
+  // color from the same palette used for lists, so each person consistently
+  // gets the same colored circle every time.
   const MEMBER_COLOR_PALETTE = [
-    '#4bce97','#f5cd47','#fea362','#f87168','#9f8fef',
-    '#579dff','#60c6d2','#94c748','#e774bb','#8590a2',
-    '#1f845a','#946f00','#c25100','#c9372c','#6e5dc6',
-    '#0c66e4','#227d9b','#5b7f24','#ae4787','#626f86'
+    '#2a9245','#22388e','#8f26d8','#6a6a6a','#ca6410',
+    '#af1d10','#cc1f3b','#b6b914','#298f91','#891b62'
   ];
 
   function memberColor(identifier) {
@@ -206,26 +203,16 @@
 
   // Named version of the same palette, for the Settings color-picker grid
   const MEMBER_SWATCHES = [
-    { hex: '#4bce97', name: 'Green'       },
-    { hex: '#f5cd47', name: 'Yellow'      },
-    { hex: '#fea362', name: 'Orange'      },
-    { hex: '#f87168', name: 'Red'         },
-    { hex: '#9f8fef', name: 'Purple'      },
-    { hex: '#579dff', name: 'Blue'        },
-    { hex: '#60c6d2', name: 'Sky'         },
-    { hex: '#94c748', name: 'Lime'        },
-    { hex: '#e774bb', name: 'Pink'        },
-    { hex: '#8590a2', name: 'Gray'        },
-    { hex: '#1f845a', name: 'Dark Green'  },
-    { hex: '#946f00', name: 'Dark Yellow' },
-    { hex: '#c25100', name: 'Dark Orange' },
-    { hex: '#c9372c', name: 'Dark Red'    },
-    { hex: '#6e5dc6', name: 'Dark Purple' },
-    { hex: '#0c66e4', name: 'Dark Blue'   },
-    { hex: '#227d9b', name: 'Dark Sky'    },
-    { hex: '#5b7f24', name: 'Dark Lime'   },
-    { hex: '#ae4787', name: 'Dark Pink'   },
-    { hex: '#626f86', name: 'Dark Gray'   }
+    { hex: '#2a9245', name: 'Green'   },
+    { hex: '#22388e', name: 'Navy'    },
+    { hex: '#8f26d8', name: 'Purple'  },
+    { hex: '#6a6a6a', name: 'Gray'    },
+    { hex: '#ca6410', name: 'Orange'  },
+    { hex: '#af1d10', name: 'Red'     },
+    { hex: '#cc1f3b', name: 'Crimson' },
+    { hex: '#b6b914', name: 'Lime'    },
+    { hex: '#298f91', name: 'Teal'    },
+    { hex: '#891b62', name: 'Magenta' },
   ];
 
   function switchTab(tab) {
