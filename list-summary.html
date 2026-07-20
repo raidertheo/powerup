@@ -91,6 +91,7 @@
 
     .palette-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
     .palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-bottom: 16px; }
+    .settings-divider { height: 1px; background: var(--border); margin: 18px 0; }
     .swatch {
       aspect-ratio: 1; border-radius: 7px; cursor: pointer;
       border: 2px solid transparent; transition: transform .12s, border-color .12s, box-shadow .12s;
@@ -193,6 +194,7 @@
   ];
 
   function memberColor(identifier) {
+    if (memberColors[identifier]) return memberColors[identifier];
     const str = String(identifier || '');
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -201,6 +203,30 @@
     const idx = Math.abs(hash) % MEMBER_COLOR_PALETTE.length;
     return MEMBER_COLOR_PALETTE[idx];
   }
+
+  // Named version of the same palette, for the Settings color-picker grid
+  const MEMBER_SWATCHES = [
+    { hex: '#4bce97', name: 'Green'       },
+    { hex: '#f5cd47', name: 'Yellow'      },
+    { hex: '#fea362', name: 'Orange'      },
+    { hex: '#f87168', name: 'Red'         },
+    { hex: '#9f8fef', name: 'Purple'      },
+    { hex: '#579dff', name: 'Blue'        },
+    { hex: '#60c6d2', name: 'Sky'         },
+    { hex: '#94c748', name: 'Lime'        },
+    { hex: '#e774bb', name: 'Pink'        },
+    { hex: '#8590a2', name: 'Gray'        },
+    { hex: '#1f845a', name: 'Dark Green'  },
+    { hex: '#946f00', name: 'Dark Yellow' },
+    { hex: '#c25100', name: 'Dark Orange' },
+    { hex: '#c9372c', name: 'Dark Red'    },
+    { hex: '#6e5dc6', name: 'Dark Purple' },
+    { hex: '#0c66e4', name: 'Dark Blue'   },
+    { hex: '#227d9b', name: 'Dark Sky'    },
+    { hex: '#5b7f24', name: 'Dark Lime'   },
+    { hex: '#ae4787', name: 'Dark Pink'   },
+    { hex: '#626f86', name: 'Dark Gray'   }
+  ];
 
   function switchTab(tab) {
     activeTab = tab;
@@ -295,7 +321,9 @@
   }
 
   // ── Settings panel renderer ──────────────────────────────────────────────
-  let settingsSelectedList = null; // tracks currently selected list in dropdown
+  let settingsSelectedList   = null; // tracks currently selected list in dropdown
+  let settingsSelectedMember = null; // tracks currently selected member in dropdown
+  let memberColors = {}; // { memberName: hexColor } — manual overrides, persisted
 
   function renderSettings(lists) {
     if (!lists || lists.length === 0) {
@@ -321,7 +349,7 @@
         data-color="${s.hex}" onclick="pickColor('${s.hex}')">
       </div>`).join('');
 
-    return `
+    let html = `
       <p class="settings-intro">Choose a list, then pick its color. Colors sync across List, Chart, and legend.</p>
       <select class="settings-select" id="settings-list-select" onchange="onListSelect(this.value)">
         ${options}
@@ -336,6 +364,47 @@
       <div class="palette-label">Colors</div>
       <div class="palette-grid" id="palette-grid">${grid}</div>
       <button class="settings-save" id="settings-save-btn" onclick="saveColors()">Save Colors</button>`;
+
+    // ── Member Colors sub-section ──
+    const memberList = (summaryData && summaryData.members) || [];
+    if (memberList.length > 0) {
+      if (!settingsSelectedMember || !memberList.find(m => m.name === settingsSelectedMember)) {
+        settingsSelectedMember = memberList[0].name;
+      }
+      const mIdx      = memberList.findIndex(m => m.name === settingsSelectedMember);
+      const mSelName  = memberList[mIdx >= 0 ? mIdx : 0].name;
+      const mCurrent  = memberColors[mSelName] || memberColor(mSelName);
+      const mSwatchObj = MEMBER_SWATCHES.find(s => s.hex === mCurrent);
+
+      const mOptions = memberList.map(m => {
+        return `<option value="${esc(m.name)}" ${m.name === mSelName ? 'selected' : ''}>${esc(m.name)}</option>`;
+      }).join('\n');
+
+      const mGrid = MEMBER_SWATCHES.map(s => `
+        <div class="swatch ${s.hex === mCurrent ? 'selected' : ''}"
+          style="background:${s.hex}" title="${s.name}"
+          data-color="${s.hex}" onclick="pickMemberColor('${s.hex}')">
+        </div>`).join('');
+
+      html += `
+        <div class="settings-divider"></div>
+        <p class="settings-intro">Choose a member, then pick their avatar color.</p>
+        <select class="settings-select" id="settings-member-select" onchange="onMemberSelectSettings(this.value)">
+          ${mOptions}
+        </select>
+        <div class="color-preview-row">
+          <div class="color-preview-swatch" id="member-preview-swatch" style="background:${mCurrent};border-radius:50%"></div>
+          <div>
+            <div class="color-preview-name" id="member-preview-name">${esc(mSelName)}</div>
+            <div class="color-preview-label" id="member-preview-color-name">${mSwatchObj ? mSwatchObj.name : 'Custom'}</div>
+          </div>
+        </div>
+        <div class="palette-label">Colors</div>
+        <div class="palette-grid" id="member-palette-grid">${mGrid}</div>
+        <button class="settings-save" id="settings-save-member-btn" onclick="saveMemberColors()">Save Colors</button>`;
+    }
+
+    return html;
   }
 
   function onListSelect(name) {
@@ -363,6 +432,38 @@
   function saveColors() {
     const btn = document.getElementById('settings-save-btn');
     t.set('board', 'shared', 'timetrack-list-colors', listColors).then(() => {
+      btn.textContent = '✓ Saved!';
+      btn.classList.add('saved');
+      setTimeout(() => {
+        btn.textContent = 'Save Colors';
+        btn.classList.remove('saved');
+      }, 1500);
+    });
+  }
+
+  function onMemberSelectSettings(name) {
+    settingsSelectedMember = name;
+    if (summaryData) renderAll(summaryData);
+  }
+
+  function pickMemberColor(hex) {
+    if (!settingsSelectedMember) return;
+    memberColors[settingsSelectedMember] = hex;
+
+    const swatchObj = MEMBER_SWATCHES.find(s => s.hex === hex);
+    const preview = document.getElementById('member-preview-swatch');
+    const label   = document.getElementById('member-preview-color-name');
+    if (preview) preview.style.background = hex;
+    if (label)   label.textContent = swatchObj ? swatchObj.name : hex;
+
+    document.querySelectorAll('#member-palette-grid .swatch').forEach(el => {
+      el.classList.toggle('selected', el.dataset.color === hex);
+    });
+  }
+
+  function saveMemberColors() {
+    const btn = document.getElementById('settings-save-member-btn');
+    t.set('board', 'shared', 'timetrack-member-colors', memberColors).then(() => {
       btn.textContent = '✓ Saved!';
       btn.classList.add('saved');
       setTimeout(() => {
@@ -680,8 +781,12 @@
       return;
     }
 
-    t.get('board', 'shared', 'timetrack-list-colors').catch(function() { return {}; }).then(function(colors) {
-      listColors = colors || {};
+    Promise.all([
+      t.get('board', 'shared', 'timetrack-list-colors').catch(function() { return {}; }),
+      t.get('board', 'shared', 'timetrack-member-colors').catch(function() { return {}; })
+    ]).then(function(results) {
+      listColors = results[0] || {};
+      memberColors = results[1] || {};
 
       if (!raw) {
         document.getElementById('container').innerHTML =

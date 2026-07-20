@@ -175,6 +175,29 @@
 <script>
   const t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
 
+  // ── Member avatar colors — same logic as the Time Summary Member tab ────
+  // Trello doesn't expose a member's real initials-avatar color via the API,
+  // so each member gets a stable color hashed from their name, unless a
+  // manual override has been set in Time Summary → Settings → Member Colors.
+  const MEMBER_COLOR_PALETTE = [
+    '#4bce97','#f5cd47','#fea362','#f87168','#9f8fef',
+    '#579dff','#60c6d2','#94c748','#e774bb','#8590a2',
+    '#1f845a','#946f00','#c25100','#c9372c','#6e5dc6',
+    '#0c66e4','#227d9b','#5b7f24','#ae4787','#626f86'
+  ];
+  let memberColorOverrides = {}; // loaded from board-shared storage
+
+  function memberColor(identifier) {
+    if (memberColorOverrides[identifier]) return memberColorOverrides[identifier];
+    const str = String(identifier || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    const idx = Math.abs(hash) % MEMBER_COLOR_PALETTE.length;
+    return MEMBER_COLOR_PALETTE[idx];
+  }
+
   // Check if opened on team tab (from detail badge callback)
   const startTab = new URLSearchParams(window.location.search).get('tab') === 'team' ? 'team' : 'time';
 
@@ -193,8 +216,10 @@
   Promise.all([
     t.get('card', 'shared', 'timetrack').then(d => d || {}),
     t.get('card', 'shared', 'timetrack-members').then(d => d || []).catch(() => []),
-    t.member('id', 'fullName', 'avatar').catch(() => null)
-  ]).then(([timeData, entries, member]) => {
+    t.member('id', 'fullName', 'avatar').catch(() => null),
+    t.get('board', 'shared', 'timetrack-member-colors').catch(() => ({}))
+  ]).then(([timeData, entries, member, colorOverrides]) => {
+    memberColorOverrides = colorOverrides || {};
 
     // Populate time fields — spent is derived from team log, not stored value
     document.getElementById('estimated').value = timeData.estimated || '';
@@ -213,6 +238,7 @@
       if (member.avatarUrl) {
         avatarEl.innerHTML = `<img src="${member.avatarUrl}/30.png" alt=""/>`;
       } else {
+        avatarEl.style.background = memberColor(member.fullName || member.id);
         avatarEl.textContent = (member.fullName || 'U')[0].toUpperCase();
       }
     }
@@ -290,10 +316,11 @@
     list.innerHTML = logEntries.map((e, i) => {
       const initials  = (e.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
       const avatarHTML = e.avatar ? `<img src="${esc(e.avatar)}" alt=""/>` : initials;
+      const avatarBg   = e.avatar ? '' : `background:${memberColor(e.name)};`;
       const date = e.date ? new Date(e.date).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : '';
       const note = e.note || date;
       return `<div class="entry">
-        <div class="entry-avatar">${avatarHTML}</div>
+        <div class="entry-avatar" style="${avatarBg}">${avatarHTML}</div>
         <div class="entry-info">
           <div class="entry-name">${esc(e.name)}</div>
           ${note ? `<div class="entry-note">${esc(note)}</div>` : ''}
@@ -401,9 +428,10 @@
       const rows = boardMembers.map(m => {
         const initials   = (m.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
         const avatarHTML = m.avatar ? `<img src="${esc(m.avatar)}" alt=""/>` : initials;
+        const avatarBg   = m.avatar ? '' : `background:${memberColor(m.name)};`;
         const checked    = assignedIds.has(m.id);
         return `<div class="assign-row" onclick="toggleAssign('${m.id}')">
-          <div class="assign-avatar">${avatarHTML}</div>
+          <div class="assign-avatar" style="${avatarBg}">${avatarHTML}</div>
           <span class="assign-name">${esc(m.name)}</span>
           <div class="assign-check ${checked ? 'checked' : ''}" id="chk-${m.id}"></div>
         </div>`;
