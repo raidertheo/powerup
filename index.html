@@ -211,9 +211,11 @@ function openBoardSummary(t) {
           });
         });
 
-        // Finalise — only show members who have logged time
+        // Finalise — show ALL members who are assigned to at least one card
+        // (via Trello's native Members field or the Power-Up Assign tab),
+        // regardless of whether they've personally logged hours yet
         const members = Object.values(memberMap)
-          .filter(m => m.entries > 0)
+          .filter(m => m.cardCount > 0 || m.entries > 0)
           .map(m => ({
             name:        m.name || 'Unknown',
             avatar:      m.avatar,
