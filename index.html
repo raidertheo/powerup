@@ -346,7 +346,6 @@ function openBoardSummary(t) {
         // stop eating into the shared 8KB budget used by 'timetrack-list-colors'.
         return t.board('id').then(board2 => {
           try {
-            summary.builtAt = Date.now();
             localStorage.setItem('timetrack-summary-' + board2.id, JSON.stringify(summary));
             console.log('Summary saved to localStorage,', JSON.stringify(summary).length, 'chars');
           } catch (e) {

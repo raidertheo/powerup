@@ -478,11 +478,12 @@
   // ── Assign tab logic ────────────────────────────────────────────────────
   let boardMembers   = [];  // all board members
   let assignedIds    = new Set(); // currently assigned member IDs
-  let assignLoaded   = false;
 
   function renderAssign() {
-    if (assignLoaded) return;
-    assignLoaded = true;
+    // Deliberately no "load once" guard here — always re-fetch fresh native
+    // Trello member data on every visit to this tab, so a native assignment
+    // change made while the popup is open (or between visits) is reflected
+    // immediately, not just on first load.
 
     Promise.all([
       t.board('id').catch(() => null),
