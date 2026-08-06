@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TimeTrack</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3e;
+      --accent:  #5b8dee;
+      --accent2: #38d9a9;
+      --purple:  #a78bfa;
+      --warn:    #ff6b6b;
+      --text:    #e8eaf0;
+      --muted:   #6b7280;
+      --radius:  10px;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); padding: 14px; overflow-y: auto; max-height: 520px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+    .tab {
+      flex: 1; padding: 8px 2px; text-align: center; font-size: 10px; font-weight: 600;
+      border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); transition: all .15s;
+      user-select: none;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      letter-spacing: .01em; white-space: nowrap; overflow: hidden;
+    }
+    .tab svg { flex-shrink: 0; }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Time tab ── */
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .field label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 5px; letter-spacing: .04em; text-transform: uppercase; }
+    .field input[type="number"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 500;
+      padding: 9px 11px; outline: none; transition: border-color .2s;
+      -moz-appearance: textfield;
+    }
+    .field input[type="number"]::-webkit-outer-spin-button,
+    .field input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .field input[type="number"]:focus { border-color: var(--accent); }
+
+    .progress-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .progress-label-row label { font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+    .progress-value { font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 500; }
+    .progress-bar-bg { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-bottom: 4px; }
+    .progress-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .15s ease; }
+    .progress-bar-fill.done { background: var(--accent2); }
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: var(--border); outline: none; cursor: pointer; margin-bottom: 12px; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(91,141,238,.2); cursor: pointer; }
+    .status-chip { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; margin-bottom: 12px; display: inline-block; opacity: 0; transition: opacity .2s; }
+    .status-chip.visible { opacity: 1; }
+    .status-chip.over { background: rgba(255,107,107,.15); color: var(--warn); }
+    .status-chip.done { background: rgba(56,217,169,.15); color: var(--accent2); }
+
+    .integrated-row {
+      display: flex; align-items: center; gap: 9px; cursor: pointer;
+      user-select: none; margin: 14px 0 12px; width: fit-content;
+    }
+    .integrated-row input[type="checkbox"] {
+      position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;
+    }
+    .integrated-box {
+      width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--border);
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      transition: all .15s; background: var(--surface);
+    }
+    .integrated-row input[type="checkbox"]:checked + .integrated-box {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .integrated-row input[type="checkbox"]:checked + .integrated-box::after {
+      content: '✓'; font-size: 12px; color: #fff; font-weight: 700;
+    }
+    .integrated-label { font-size: 13px; font-weight: 500; color: var(--text); }
+
+    /* ── Team tab ── */
+    .member-strip { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; margin-bottom: 14px; }
+    .member-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; overflow: hidden; }
+    .member-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .member-name { font-size: 13px; font-weight: 600; }
+    .member-sub  { font-size: 10px; color: var(--muted); }
+    .log-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 16px; align-items: end; }
+    .field input[type="text"] {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; padding: 9px 11px; outline: none; transition: border-color .2s;
+    }
+    .field input[type="text"]:focus { border-color: var(--purple); }
+    .log-btn { padding: 9px 14px; background: var(--accent); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; height: 40px; transition: background .2s; }
+    .log-btn:hover { background: #4a7de0; }
+    .section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .entry-list { display: flex; flex-direction: column; gap: 5px; }
+    .entry { display: flex; align-items: center; gap: 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; }
+    .entry-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--purple); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; overflow: hidden; color: #fff; }
+    .entry-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .entry-info { flex: 1; min-width: 0; }
+    .entry-name { font-size: 11px; font-weight: 600; }
+    .entry-note { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry-hrs { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; color: var(--purple); flex-shrink: 0; }
+    .entry-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px; flex-shrink: 0; transition: color .15s; }
+    .entry-del:hover { color: var(--warn); }
+    .total-row { display: flex; justify-content: space-between; padding: 7px 0 0; border-top: 1px solid var(--border); margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .total-row span:last-child { font-family: 'DM Mono', monospace; font-weight: 500; color: var(--text); }
+    .empty-log { font-size: 12px; color: var(--muted); text-align: center; padding: 10px; }
+
+    /* Shared save button */
+    .save-btn { width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s, transform .1s; margin-top: 2px; }
+    .save-btn:hover  { background: #4a7de0; }
+    .save-btn:active { transform: scale(.98); }
+    .save-btn.saved  { background: var(--accent2); color: #0f1117; }
+    .save-btn:disabled { opacity: .5; cursor: not-allowed; }
+    /* Assign tab */
+    .assign-intro { font-size: 11px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+    .assign-loading { font-size: 12px; color: var(--muted); text-align: center; padding: 16px; }
+    .assign-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; margin-bottom: 4px; user-select: none; }
+    .assign-row:hover { background: var(--surface); }
+    .assign-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--purple); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; overflow: hidden; color: #fff; }
+    .assign-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .assign-name { flex: 1; font-size: 13px; font-weight: 500; }
+    .assign-check { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+    .assign-check.checked { background: var(--accent); border-color: var(--accent); }
+    .assign-check.checked::after { content: '✓'; font-size: 11px; color: #fff; font-weight: 700; }
+    .assign-save { width: 100%; margin-top: 10px; padding: 10px; background: var(--accent); border: none; border-radius: var(--radius); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s; }
+    .assign-save:hover { background: #4a7de0; }
+    .assign-save.saved { background: var(--accent2); color: #0f1117; }
+
+    /* Showcase tab */
+    .showcase-preview-wrap {
+      width: 100%; min-height: 70px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; margin-bottom: 12px; position: relative; padding: 10px;
+    }
+    .showcase-preview-wrap img { display: block; width: auto; height: auto; max-width: 100%; }
+    .showcase-preview-empty { color: var(--muted); font-size: 11px; text-align: center; padding: 16px; line-height: 1.5; }
+    .showcase-preview-empty svg { margin-bottom: 6px; opacity: .5; }
+    .showcase-source-label {
+      font-size: 10px; color: var(--accent2); text-align: center;
+      margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .showcase-attach-picker { margin-bottom: 10px; }
+    .showcase-section-label { font-size: 10px; color: var(--accent2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; font-weight: 700; }
+    .showcase-divider { height: 1px; background: var(--border); margin: 14px 0; }
+    .showcase-attach-list { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+    .showcase-attach-thumb {
+      flex-shrink: 0; width: 52px; height: 52px; border-radius: 6px; overflow: hidden;
+      border: 2px solid var(--border); cursor: pointer; transition: border-color .15s;
+      background: var(--surface); display: flex; align-items: center; justify-content: center;
+    }
+    .showcase-attach-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .showcase-attach-thumb:hover { border-color: var(--accent); }
+    .showcase-attach-thumb.selected { border-color: var(--accent2); }
+    .showcase-attach-name {
+      font-size: 8px; color: var(--muted); text-align: center; margin-top: 2px;
+      max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .showcase-file-wrap { position: relative; margin-bottom: 10px; }
+    .showcase-file-label {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; padding: 9px; background: var(--surface);
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px;
+      font-weight: 500; cursor: pointer; transition: border-color .2s, background .2s;
+    }
+    .showcase-file-label:hover { border-color: var(--accent); background: rgba(91,141,238,.08); }
+    #showcase-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+    .showcase-size-info { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 10px; }
+    .showcase-size-info.warn { color: var(--warn); }
+    .showcase-btn-row { display: flex; gap: 8px; }
+    .showcase-remove-btn {
+      flex: 1; padding: 9px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); color: var(--warn); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color .2s, background .2s;
+    }
+    .showcase-remove-btn:hover { border-color: var(--warn); background: rgba(255,107,107,.08); }
+    .showcase-status { font-size: 10px; color: var(--muted); text-align: center; margin-top: 8px; min-height: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" id="tab-time" onclick="switchTab('time')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Time</div>
+  <div class="tab"        id="tab-team" onclick="switchTab('team')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>Log Hours</div>
+  <div class="tab"        id="tab-assign" onclick="switchTab('assign')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Assign</div>
+  <div class="tab"        id="tab-showcase" onclick="switchTab('showcase')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Showcase</div>
+</div>
+
+<!-- ── TIME PANEL ── -->
+<div class="panel active" id="panel-time">
+  <div class="fields">
+    <div class="field">
+      <label>Estimated Hours</label>
+      <input type="number" id="estimated" min="0" step="0.25" placeholder="0"/>
+    </div>
+    <div class="field">
+      <label>Hours Spent <span style="font-size:9px;color:var(--accent);letter-spacing:0">auto</span></label>
+      <input type="number" id="spent" min="0" step="0.25" placeholder="0" readonly style="opacity:.6;cursor:not-allowed;"/>
+    </div>
+  </div>
+  <div class="progress-label-row">
+    <label>% Complete</label>
+    <span class="progress-value" id="pct-display">0%</span>
+  </div>
+  <div class="progress-bar-bg"><div class="progress-bar-fill" id="bar-fill" style="width:0%"></div></div>
+  <input type="range" id="progress" min="0" max="100" step="1" value="0"/>
+
+  <label class="integrated-row" for="integrated-checkbox">
+    <input type="checkbox" id="integrated-checkbox" name="integrated-checkbox"/>
+    <span class="integrated-box"></span>
+    <span class="integrated-label">P4V Integrated</span>
+  </label>
+
+  <div class="status-chip" id="status-chip"></div>
+  <div class="save-btn saved" id="save-time-btn" style="text-align:center;pointer-events:none;">✓ Saved</div>
+</div>
+
+<!-- ── ASSIGN PANEL ── -->
+<div class="panel" id="panel-assign">
+  <p class="assign-intro">Select members to assign to this card. Used for time attribution in the Board Summary.</p>
+  <div id="assign-list"><div class="assign-loading">Loading members…</div></div>
+</div>
+
+<!-- ── SHOWCASE PANEL ── -->
+<div class="panel" id="panel-showcase">
+  <div class="showcase-preview-wrap" id="showcase-preview-wrap">
+    <div class="showcase-preview-empty" id="showcase-preview-empty">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <div>No showcase image yet</div>
+    </div>
+    <img id="showcase-preview-img" style="display:none" alt="Showcase preview"/>
+  </div>
+
+  <div class="showcase-source-label" id="showcase-source-label" style="display:none"></div>
+
+  <div class="showcase-section-label">Low Res — Upload from your computer</div>
+  <div class="showcase-file-wrap">
+    <label class="showcase-file-label" for="showcase-file-input">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Choose Image
+    </label>
+    <input type="file" id="showcase-file-input" name="showcase-file" accept="image/*"/>
+  </div>
+  <div class="showcase-size-info" id="showcase-size-info"></div>
+  <div class="showcase-btn-row">
+    <button class="showcase-remove-btn" id="showcase-remove-btn" style="display:none">Remove</button>
+    <button class="save-btn" id="showcase-save-btn" disabled>Save Image</button>
+  </div>
+  <div class="showcase-status" id="showcase-status"></div>
+
+  <div class="showcase-divider"></div>
+
+  <div class="showcase-attach-picker" id="showcase-attach-picker" style="display:none">
+    <div class="showcase-section-label">Hi-Res — From this card's attachments</div>
+    <div class="showcase-attach-list" id="showcase-attach-list"></div>
+  </div>
+</div>
+
+<!-- ── TEAM PANEL ── -->
+<div class="panel" id="panel-team">
+  <div class="member-strip">
+    <div class="member-avatar" id="member-avatar">?</div>
+    <div>
+      <div class="member-name" id="member-name">Loading…</div>
+      <div class="member-sub">Logging as you</div>
+    </div>
+  </div>
+  <div class="log-form">
+    <div class="field" style="grid-column:1/-1">
+      <label>Note (optional)</label>
+      <input type="text" id="note" placeholder="e.g. Code review, Bug fix…" maxlength="80"/>
+    </div>
+    <div class="field">
+      <label>Hours to Log</label>
+      <input type="number" id="log-hours" min="0" step="0.25" placeholder="0"/>
+    </div>
+    <button class="log-btn" id="log-btn">+ Log</button>
+  </div>
+  <div class="section-label">Log History</div>
+  <div class="entry-list" id="entry-list"></div>
+</div>
+
+<script>
+  const t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
+
+  // ── Member avatar colors — same logic as the Time Summary Member tab ────
+  // Trello doesn't expose a member's real initials-avatar color via the API,
+  // so each member gets a stable color hashed from their name, unless a
+  // manual override has been set in Time Summary → Settings → Member Colors.
+  const MEMBER_COLOR_PALETTE = [
+    '#2a9245','#22388e','#8f26d8','#6a6a6a','#e95817',
+    '#af1d10','#2f52ca','#ebce18','#298f91','#e81691'
+  ];
+  let memberColorOverrides = {}; // loaded from board-shared storage
+
+  function memberColor(identifier) {
+    if (memberColorOverrides[identifier]) return memberColorOverrides[identifier];
+    const str = String(identifier || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    const idx = Math.abs(hash) % MEMBER_COLOR_PALETTE.length;
+    return MEMBER_COLOR_PALETTE[idx];
+  }
+
+  // Check if opened on team tab (from detail badge callback)
+  const startTabParam = new URLSearchParams(window.location.search).get('tab');
+  const startTab = (startTabParam === 'team' || startTabParam === 'showcase') ? startTabParam : 'time';
+
+  let currentMember = null;
+  let logEntries    = [];
+
+  function switchTab(tab) {
+    ['time','team','assign','showcase'].forEach(id => {
+      document.getElementById('tab-' + id).classList.toggle('active', id === tab);
+      document.getElementById('panel-' + id).classList.toggle('active', id === tab);
+    });
+    if (tab === 'assign') renderAssign();
+    if (tab === 'showcase') loadShowcase();
+  }
+
+  // ── Load everything in parallel ──
+  Promise.all([
+    t.get('card', 'shared', 'timetrack').then(d => d || {}),
+    t.get('card', 'shared', 'timetrack-members').then(d => d || []).catch(() => []),
+    t.member('id', 'fullName', 'avatar').catch(() => null),
+    t.get('board', 'shared', 'timetrack-member-colors').catch(() => ({}))
+  ]).then(([timeData, entries, member, colorOverrides]) => {
+    memberColorOverrides = colorOverrides || {};
+
+    // Populate time fields — spent is derived from team log, not stored value
+    document.getElementById('estimated').value = timeData.estimated || '';
+    document.getElementById('progress').value  = timeData.progress  || 0;
+    document.getElementById('integrated-checkbox').checked = !!timeData.integrated;
+
+    // Populate member info
+    logEntries = entries;
+    if (member) {
+      currentMember = {
+        memberId: member.id,
+        name:     member.fullName || 'Unknown',
+        avatar:   member.avatarUrl ? member.avatarUrl + '/30.png' : null
+      };
+      document.getElementById('member-name').textContent = member.fullName || 'You';
+      const avatarEl = document.getElementById('member-avatar');
+      if (member.avatarUrl) {
+        avatarEl.innerHTML = `<img src="${member.avatarUrl}/30.png" alt=""/>`;
+      } else {
+        avatarEl.style.background = memberColor(member.fullName || member.id);
+        avatarEl.textContent = (member.fullName || 'U')[0].toUpperCase();
+      }
+    }
+
+    syncSpentFromLog();
+    renderLog();
+
+    if (startTab === 'team' || startTab === 'showcase') switchTab(startTab);
+  });
+
+  // ── Time tab logic ──
+  function updateTimeUI() {
+    const pct   = parseInt(document.getElementById('progress').value, 10);
+    const est   = parseFloat(document.getElementById('estimated').value) || 0;
+    const spent = parseFloat(document.getElementById('spent').value)     || 0;
+    const over  = est > 0 && spent > est;
+    const done  = pct === 100;
+
+    document.getElementById('pct-display').textContent = `${pct}%`;
+    const fill = document.getElementById('bar-fill');
+    fill.style.width = `${pct}%`;
+    fill.className = 'progress-bar-fill' + (done ? ' done' : '');
+
+    const chip = document.getElementById('status-chip');
+    if (over)       { chip.textContent = `⚠️ Over budget by ${(spent - est).toFixed(2)} hrs`; chip.className = 'status-chip visible over'; }
+    else if (done)  { chip.textContent = '✅ Complete!'; chip.className = 'status-chip visible done'; }
+    else            { chip.className = 'status-chip'; }
+  }
+
+  // ── Sync Hours Spent = sum of team log entries (auto, read-only) ──
+  function syncSpentFromLog() {
+    const total = logEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+    document.getElementById('spent').value = total > 0 ? total.toFixed(2) : '';
+    updateTimeUI();
+    autoSave();
+  }
+
+  // ── Auto-save with debounce (500ms after last change) ──
+  let saveTimer = null;
+  function autoSave() {
+    clearTimeout(saveTimer);
+    showSaveStatus('saving');
+    saveTimer = setTimeout(() => {
+      const data = {
+        estimated:  parseFloat(document.getElementById('estimated').value) || 0,
+        spent:      parseFloat(document.getElementById('spent').value)     || 0,
+        progress:   parseInt(document.getElementById('progress').value, 10),
+        integrated: document.getElementById('integrated-checkbox').checked
+      };
+      t.set('card', 'shared', 'timetrack', data).then(() => {
+        showSaveStatus('saved');
+      }).catch(() => showSaveStatus('error'));
+    }, 500);
+  }
+
+  function showSaveStatus(state) {
+    const btn = document.getElementById('save-time-btn');
+    if (state === 'saving') { btn.textContent = 'Saving…';  btn.className = 'save-btn'; }
+    if (state === 'saved')  { btn.textContent = '✓ Saved';  btn.className = 'save-btn saved'; }
+    if (state === 'error')  { btn.textContent = '⚠ Error';  btn.className = 'save-btn'; }
+  }
+
+  document.getElementById('progress').addEventListener('input', () => { updateTimeUI(); autoSave(); });
+  document.getElementById('estimated').addEventListener('input', () => { updateTimeUI(); autoSave(); });
+  document.getElementById('integrated-checkbox').addEventListener('change', () => { autoSave(); });
+  // Note: 'spent' is read-only — updated via syncSpentFromLog which calls autoSave directly
+
+  // ── Team log logic ──
+  function renderLog() {
+    const list = document.getElementById('entry-list');
+    if (logEntries.length === 0) {
+      list.innerHTML = '<div class="empty-log">No entries yet. Log your first hours above.</div>';
+      return;
+    }
+    const totalHrs = logEntries.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+    list.innerHTML = logEntries.map((e, i) => {
+      const initials  = (e.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+      const avatarHTML = e.avatar ? `<img src="${esc(e.avatar)}" alt=""/>` : initials;
+      const avatarBg   = e.avatar ? '' : `background:${memberColor(e.name)};`;
+      const date = e.date ? new Date(e.date).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : '';
+      const note = e.note || date;
+      return `<div class="entry">
+        <div class="entry-avatar" style="${avatarBg}">${avatarHTML}</div>
+        <div class="entry-info">
+          <div class="entry-name">${esc(e.name)}</div>
+          ${note ? `<div class="entry-note">${esc(note)}</div>` : ''}
+        </div>
+        <span class="entry-hrs">${parseFloat(e.hours).toFixed(2)}h</span>
+        <button class="entry-del" data-idx="${i}" title="Delete">✕</button>
+      </div>`;
+    }).join('') + `<div class="total-row"><span>Total logged</span><span>${totalHrs.toFixed(2)} hrs</span></div>`;
+
+    list.querySelectorAll('.entry-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        logEntries.splice(parseInt(btn.dataset.idx, 10), 1);
+        t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+          syncSpentFromLog();
+          renderLog();
+        });
+      });
+    });
+  }
+
+  document.getElementById('log-btn').addEventListener('click', () => {
+    const hours = parseFloat(document.getElementById('log-hours').value);
+    const note  = document.getElementById('note').value.trim();
+    if (hours === null || hours === undefined || isNaN(hours) || document.getElementById('log-hours').value === '') { document.getElementById('log-hours').focus(); return; }
+    const entry = { ...(currentMember || { memberId: 'unknown', name: 'Unknown', avatar: null }), hours, note, date: new Date().toISOString() };
+    logEntries.push(entry);
+    t.set('card', 'shared', 'timetrack-members', logEntries).then(() => {
+      document.getElementById('log-hours').value = '';
+      document.getElementById('note').value = '';
+      syncSpentFromLog();
+      renderLog();
+    });
+  });
+
+  // ── Assign tab logic ────────────────────────────────────────────────────
+  let boardMembers   = [];  // all board members
+  let assignedIds    = new Set(); // currently assigned member IDs
+  let assignLoaded   = false;
+
+  function renderAssign() {
+    if (assignLoaded) return;
+    assignLoaded = true;
+
+    Promise.all([
+      t.board('id').catch(() => null),
+      t.get('card', 'shared', 'timetrack-assigned').then(d => d || []).catch(() => []),
+      t.card('members').catch(() => null),  // Trello's native card member assignments
+      t.get('card', 'shared', 'timetrack-last-native').then(d => d || []).catch(() => [])
+    ]).then(([board, saved, cardData, lastNative]) => {
+      // Board-wide member list is cached in localStorage by index.html
+      // (built whenever Time Summary or Export runs), since fetching the
+      // full board member list directly from a card popup isn't reliably
+      // supported by the Power-Up SDK.
+      let cachedMembers = [];
+      try {
+        if (board) {
+          const raw = localStorage.getItem('timetrack-boardmembers-' + board.id);
+          if (raw) cachedMembers = JSON.parse(raw) || [];
+        }
+      } catch (e) { /* ignore, fall through to fallback below */ }
+
+      const trelloMembers = cardData && cardData.members ? cardData.members : [];
+
+      if (cachedMembers.length > 0) {
+        boardMembers = cachedMembers.map(m => ({
+          id: m.id,
+          name: m.name || 'Unknown',
+          avatar: m.avatar || null
+        }));
+      } else {
+        // Fallback: no cache yet (Time Summary/Export never run on this
+        // board). Show at least the members already assigned to this card.
+        boardMembers = trelloMembers.map(m => ({
+          id: m.id,
+          name: m.fullName || m.username || 'Unknown',
+          avatar: m.avatarUrl ? m.avatarUrl + '/30.png' : null
+        }));
+      }
+
+      if (boardMembers.length === 0) {
+        document.getElementById('assign-list').innerHTML =
+          '<div class="assign-loading">No board members found yet.<br>Open "Time Summary" from the board toolbar once, then reopen this card.</div>';
+        return;
+      }
+
+      // Seed checkbox state as the union of what's saved and Trello's current
+      // native card members — but first prune out anyone who WAS a native
+      // member last time we checked and no longer is, so removing someone
+      // from the card's Members field automatically unchecks them here too.
+      // Members added manually (never native) are left untouched.
+      const trelloAssigned  = trelloMembers.map(m => m.id).filter(Boolean);
+      const removedFromCard = lastNative.filter(id => !trelloAssigned.includes(id));
+      const prunedSaved     = saved.filter(id => !removedFromCard.includes(id));
+      const seedIds         = Array.from(new Set([...prunedSaved, ...trelloAssigned]));
+
+      // Persist both the resulting assignment set and this render's native
+      // snapshot, so the next open can detect further removals correctly.
+      if (seedIds.length !== saved.length || removedFromCard.length > 0) {
+        t.set('card', 'shared', 'timetrack-assigned', seedIds);
+      }
+      t.set('card', 'shared', 'timetrack-last-native', trelloAssigned);
+
+      assignedIds = new Set(seedIds);
+
+      const rows = boardMembers.map(m => {
+        const initials   = (m.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+        const avatarHTML = m.avatar ? `<img src="${esc(m.avatar)}" alt=""/>` : initials;
+        const avatarBg   = m.avatar ? '' : `background:${memberColor(m.name)};`;
+        const checked    = assignedIds.has(m.id);
+        return `<div class="assign-row" onclick="toggleAssign('${m.id}')">
+          <div class="assign-avatar" style="${avatarBg}">${avatarHTML}</div>
+          <span class="assign-name">${esc(m.name)}</span>
+          <div class="assign-check ${checked ? 'checked' : ''}" id="chk-${m.id}"></div>
+        </div>`;
+      }).join('');
+
+      document.getElementById('assign-list').innerHTML = rows;
+    });
+  }
+
+  function toggleAssign(memberId) {
+    if (assignedIds.has(memberId)) {
+      assignedIds.delete(memberId);
+    } else {
+      assignedIds.add(memberId);
+    }
+    const chk = document.getElementById('chk-' + memberId);
+    if (chk) chk.className = 'assign-check' + (assignedIds.has(memberId) ? ' checked' : '');
+    // Auto-save immediately
+    t.set('card', 'shared', 'timetrack-assigned', Array.from(assignedIds));
+  }
+
+  // ── Showcase tab logic ──────────────────────────────────────────────────
+  const SHOWCASE_MAX_BYTES = 1600; // Trello caps TOTAL data per card+scope at ~8192 chars,
+                                    // combined across ALL keys (timetrack, timetrack-members,
+                                    // timetrack-assigned, this one) — not per key. Leave generous headroom.
+  const SHOWCASE_MAX_DIM   = 100;  // max width/height of the compressed thumbnail
+
+  let showcasePendingDataUrl = null;
+  let showcaseLoaded = false;
+
+  function showcaseSetStatus(msg) {
+    const el = document.getElementById('showcase-status');
+    if (el) el.textContent = msg;
+  }
+
+  function showcaseSetSourceLabel(text) {
+    const el = document.getElementById('showcase-source-label');
+    if (!el) return;
+    if (text) {
+      el.textContent = text;
+      el.style.display = 'flex';
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
+  function showcaseShowPreview(dataUrl) {
+    const img       = document.getElementById('showcase-preview-img');
+    const empty     = document.getElementById('showcase-preview-empty');
+    const removeBtn = document.getElementById('showcase-remove-btn');
+    if (dataUrl) {
+      img.src = dataUrl;
+      img.style.display = 'block';
+      empty.style.display = 'none';
+      removeBtn.style.display = 'block';
+    } else {
+      img.style.display = 'none';
+      empty.style.display = 'block';
+      removeBtn.style.display = 'none';
+    }
+  }
+
+  let showcaseAttachments = [];
+  let showcaseSelectedAttachmentUrl = null;
+
+  // Trello generates smaller preview versions of image attachments
+  // automatically (visible in `attachment.previews`). Using one of these
+  // instead of the full-size original loads much faster, since it's a
+  // smaller file — this only affects DISPLAY speed, not the actual
+  // attachment stored on the card.
+  function bestPreviewUrl(attachment, targetWidth) {
+    if (!attachment.previews || attachment.previews.length === 0) return attachment.url;
+    // Pick the smallest preview that's still >= targetWidth, or the
+    // largest available if none reach that size.
+    var sorted = attachment.previews.slice().sort((a, b) => (a.width || 0) - (b.width || 0));
+    var match = sorted.find(p => (p.width || 0) >= targetWidth);
+    return (match || sorted[sorted.length - 1]).url || attachment.url;
+  }
+
+  function loadShowcase() {
+    if (showcaseLoaded) return;
+    showcaseLoaded = true;
+
+    console.log('Showcase: loading attachments…');
+
+    // Try the direct field first; if that comes back empty (some SDK
+    // versions reject specific field names), fall back to requesting the
+    // full card object and reading .attachments off of it.
+    const attachmentsPromise = t.card('attachments').catch(err => {
+      console.warn('Showcase: t.card(\'attachments\') failed, trying t.card(\'all\') instead:', err);
+      return t.card('all').catch(err2 => {
+        console.error('Showcase: t.card(\'all\') also failed:', err2);
+        return null;
+      });
+    });
+
+    Promise.all([
+      attachmentsPromise,
+      t.get('card', 'shared', 'timetrack-showcase').catch(() => null),
+      t.get('card', 'shared', 'timetrack-showcase-selected').catch(() => null)
+    ]).then(([cardData, stored, selectedAttachmentId]) => {
+      console.log('Showcase: raw card data received:', cardData);
+
+      const attachments = (cardData && cardData.attachments) || [];
+      console.log('Showcase: total attachments found:', attachments.length);
+
+      const imageAttachments = attachments.filter(a =>
+        a.url && (
+          (a.mimeType && a.mimeType.indexOf('image/') === 0) ||
+          /\.(jpe?g|png|gif|webp|bmp)(\?.*)?$/i.test(a.url)
+        )
+      );
+      console.log('Showcase: image attachments found:', imageAttachments.length, imageAttachments);
+
+      showcaseAttachments = imageAttachments;
+
+      const pickerWrap = document.getElementById('showcase-attach-picker');
+      const pickerList = document.getElementById('showcase-attach-list');
+
+      if (imageAttachments.length > 0) {
+        pickerWrap.style.display = 'block';
+        pickerList.innerHTML = imageAttachments.map((a, i) => `
+          <div>
+            <div class="showcase-attach-thumb" data-idx="${i}" onclick="showcaseSelectAttachment(${i})">
+              <img src="${esc(bestPreviewUrl(a, 60))}" alt="" onerror="this.parentElement.textContent='?'"/>
+            </div>
+            <div class="showcase-attach-name" title="${esc(a.name || '')}">${esc(a.name || 'image')}</div>
+          </div>
+        `).join('');
+
+        // Re-select whichever attachment was previously chosen and saved.
+        // Falls back to the first attachment if nothing was saved yet, or
+        // if the previously-selected one was since removed from the card.
+        let selectIdx = 0;
+        if (selectedAttachmentId) {
+          const foundIdx = imageAttachments.findIndex(a => a.id === selectedAttachmentId);
+          if (foundIdx >= 0) selectIdx = foundIdx;
+        }
+        showcaseSelectAttachment(selectIdx, /* persist: */ false);
+      } else {
+        pickerWrap.style.display = 'none';
+        if (stored && stored.image) {
+          showcaseShowPreview(stored.image);
+          showcaseSetSourceLabel('');
+        } else {
+          showcaseSetSourceLabel('');
+        }
+      }
+    }).catch(err => {
+      console.error('Showcase: loadShowcase failed entirely:', err);
+      showcaseSetSourceLabel('');
+    });
+  }
+
+  function showcaseSelectAttachment(idx, persist) {
+    const attachment = showcaseAttachments[idx];
+    if (!attachment) return;
+    showcaseSelectedAttachmentUrl = attachment.url;
+
+    // Persist the choice so it's remembered next time the card is opened.
+    // Skip persisting when this call is just re-applying a saved selection
+    // on load (avoids an unnecessary write on every single open).
+    if (persist !== false) {
+      t.set('card', 'shared', 'timetrack-showcase-selected', attachment.id).catch(err => {
+        console.error('Showcase: failed to save attachment selection', err);
+      });
+    }
+
+    document.querySelectorAll('.showcase-attach-thumb').forEach((el, i) => {
+      el.classList.toggle('selected', i === idx);
+    });
+
+    const img = document.getElementById('showcase-preview-img');
+    img.onerror = () => {
+      console.warn('Showcase: attachment image failed to load, falling back to stored thumbnail');
+      img.onerror = null;
+      t.get('card', 'shared', 'timetrack-showcase').then(stored => {
+        if (stored && stored.image) {
+          showcaseShowPreview(stored.image);
+          showcaseSetSourceLabel('');
+        } else {
+          showcaseShowPreview(null);
+          showcaseSetSourceLabel('');
+        }
+      });
+    };
+    // Use a mid-sized preview (~50% scale) for fast loading — this is a
+    // display-only optimization; the full-resolution original is untouched
+    // on the card itself.
+    showcaseShowPreview(bestPreviewUrl(attachment, 500));
+    showcaseSetSourceLabel('📎 From card attachment (full resolution)');
+  }
+
+  function showcaseCompressImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          const scale = Math.min(1, SHOWCASE_MAX_DIM / Math.max(width, height));
+          width  = Math.round(width * scale);
+          height = Math.round(height * scale);
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          let quality = 0.82;
+          let dataUrl = canvas.toDataURL('image/jpeg', quality);
+          let attempts = 0;
+          while (dataUrl.length > SHOWCASE_MAX_BYTES && quality > 0.15 && attempts < 10) {
+            quality -= 0.1;
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+            attempts++;
+          }
+          if (dataUrl.length > SHOWCASE_MAX_BYTES) {
+            const canvas2 = document.createElement('canvas');
+            const scale2 = 0.6;
+            canvas2.width  = Math.round(width * scale2);
+            canvas2.height = Math.round(height * scale2);
+            const ctx2 = canvas2.getContext('2d');
+            ctx2.drawImage(canvas, 0, 0, canvas2.width, canvas2.height);
+            dataUrl = canvas2.toDataURL('image/jpeg', 0.5);
+          }
+          resolve(dataUrl);
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const showcaseFileInput = document.getElementById('showcase-file-input');
+  const showcaseSaveBtn   = document.getElementById('showcase-save-btn');
+  const showcaseRemoveBtn = document.getElementById('showcase-remove-btn');
+  const showcaseSizeInfo  = document.getElementById('showcase-size-info');
+
+  showcaseFileInput.addEventListener('change', () => {
+    const file = showcaseFileInput.files[0];
+    if (!file) return;
+
+    showcaseSetStatus('Compressing image…');
+    showcaseSaveBtn.disabled = true;
+
+    showcaseCompressImage(file).then(dataUrl => {
+      showcasePendingDataUrl = dataUrl;
+      showcaseShowPreview(dataUrl);
+      const kb = (dataUrl.length / 1024).toFixed(1);
+      showcaseSizeInfo.textContent = `~${kb} KB (compressed to fit)`;
+      showcaseSizeInfo.className = dataUrl.length > SHOWCASE_MAX_BYTES ? 'showcase-size-info warn' : 'showcase-size-info';
+      showcaseSaveBtn.disabled = dataUrl.length > SHOWCASE_MAX_BYTES;
+      showcaseSetStatus(dataUrl.length > SHOWCASE_MAX_BYTES
+        ? 'Still too large — try a simpler image.'
+        : 'Ready to save.');
+    }).catch(() => {
+      showcaseSetStatus('Could not process that image. Try a different file.');
+    });
+  });
+
+  showcaseSaveBtn.addEventListener('click', () => {
+    if (!showcasePendingDataUrl) return;
+    showcaseSaveBtn.textContent = 'Saving…';
+    showcaseSaveBtn.disabled = true;
+    const payload = { image: showcasePendingDataUrl, savedAt: Date.now() };
+    console.log('Showcase: saving, payload size =', JSON.stringify(payload).length, 'chars');
+    t.set('card', 'shared', 'timetrack-showcase', payload).then(() => {
+      showcaseSaveBtn.textContent = '✓ Saved!';
+      showcaseSaveBtn.classList.add('saved');
+      showcaseSaveBtn.disabled = false;
+      showcaseSetStatus('Showcase image saved to this card.');
+      const statusEl = document.getElementById('showcase-status');
+      if (statusEl) statusEl.style.color = '';
+      setTimeout(() => {
+        showcaseSaveBtn.textContent = 'Save Image';
+        showcaseSaveBtn.classList.remove('saved');
+      }, 1500);
+    }).catch(err => {
+      console.error('Showcase: save failed', err);
+      showcaseSaveBtn.textContent = 'Save Image';
+      showcaseSaveBtn.disabled = false;
+      const statusEl = document.getElementById('showcase-status');
+      const msg = 'Save failed: ' + (err && err.message ? err.message : 'storage limit likely exceeded — try a smaller/simpler image.');
+      showcaseSetStatus(msg);
+      if (statusEl) statusEl.style.color = 'var(--warn)';
+    });
+  });
+
+  showcaseRemoveBtn.addEventListener('click', () => {
+    t.remove('card', 'shared', 'timetrack-showcase').then(() => {
+      showcasePendingDataUrl = null;
+      showcaseFileInput.value = '';
+      showcaseSizeInfo.textContent = '';
+      showcaseSaveBtn.disabled = true;
+      showcaseShowPreview(null);
+      showcaseSetStatus('Showcase image removed.');
+    });
+  });
+
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>

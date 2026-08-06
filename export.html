@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>TimeTrack Export</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg:#0f1117; --surface:#1a1d27; --border:#2a2d3e; --accent:#5b8dee; --accent2:#38d9a9; --text:#e8eaf0; --muted:#6b7280; --radius:10px; }
+    body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); padding:20px; display:flex; flex-direction:column; gap:12px; }
+    h2 { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+    .status { font-size:13px; color:var(--muted); }
+    .status.ok  { color:var(--accent2); }
+    .status.err { color:#ff6b6b; }
+    .count { font-family:'DM Mono',monospace; font-size:22px; font-weight:700; color:var(--accent2); }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; background:var(--accent); border:none; border-radius:var(--radius); color:#fff; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; transition:background .2s; width:100%; }
+    .btn.stacked { flex-direction: column; align-items: center; gap: 3px; padding: 10px 14px; font-size: 12px; }
+    .btn.stacked > span { display: block; width: 100%; text-align: center; white-space: nowrap; }
+    .btn-sub { font-size: 10px; font-weight: 500; opacity: .85; text-transform: none; letter-spacing: 0; }
+    .btn:hover { background:#4a7de0; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn.secondary { background: var(--surface); border: 1px solid var(--border); }
+    .btn.secondary:hover { border-color: var(--accent); background: rgba(91,141,238,.08); }
+    .section-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .sub-label { font-size: 11px; color: var(--muted); }
+    .file-picker-label {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; padding: 10px; background: var(--surface);
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px;
+      font-weight: 500; cursor: pointer; transition: border-color .2s, background .2s;
+    }
+    .file-picker-label:hover { border-color: var(--accent); background: rgba(91,141,238,.08); }
+    #provide-folder-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+    .pairing-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      margin-top: 8px;
+    }
+    .pairing-thumb {
+      width: 36px; height: 36px; border-radius: 6px; overflow: hidden; flex-shrink: 0;
+      background: var(--bg); display: flex; align-items: center; justify-content: center;
+    }
+    .pairing-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .pairing-select {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 11px; padding: 6px 8px;
+    }
+    .pairing-filename { font-size: 9px; color: var(--muted); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+    .save-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; margin-top: 6px;
+    }
+    .save-row-name { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .save-row-link {
+      flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--accent);
+      text-decoration: none; padding: 5px 10px; border: 1px solid var(--accent); border-radius: 6px;
+      transition: background .15s;
+    }
+    .save-row-link:hover { background: rgba(91,141,238,.1); }
+    .save-row-none { font-size: 10px; color: var(--muted); font-style: italic; }
+    .save-row-inner { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .save-row-filename {
+      font-family: 'DM Mono', monospace; font-size: 10px; color: var(--accent2);
+      background: rgba(56,217,169,.1); padding: 2px 6px; border-radius: 4px;
+      width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .match-summary { font-size: 11px; margin: 10px 0; padding: 8px 10px; border-radius: 8px; }
+    .match-summary.ok { background: rgba(56,217,169,.1); color: var(--accent2); }
+    .match-summary.partial { background: rgba(245,205,71,.1); color: #f5cd47; }
+  </style>
+</head>
+<body>
+  <h2><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export to Excel</h2>
+  <p class="status" id="status">Loading…</p>
+
+  <div id="ready" style="display:none">
+    <p style="margin-bottom:10px"><span class="count" id="row-count">0</span> <span style="font-size:12px;color:var(--muted)">cards ready</span></p>
+    <button class="btn" id="dl-btn">Download Excel (.xlsx)</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px">Includes totals row and formatting.</p>
+
+    <div class="section-divider" style="margin-top:16px"></div>
+
+    <p class="sub-label" style="margin:12px 0 8px">With Showcase images embedded:</p>
+    <button class="btn secondary stacked" id="dl-images-btn" disabled>
+      <span>Download with Low Res Images</span>
+      <span class="btn-sub">Auto Export</span>
+    </button>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px" id="images-info"></p>
+    <button class="btn secondary stacked" id="provide-images-btn" style="display:none;margin-top:8px">
+      <span>Download with Hi-Res Images</span>
+      <span class="btn-sub">Manual Save and Export</span>
+    </button>
+  </div>
+
+  <div id="provide-images-panel" style="display:none">
+    <div class="section-divider" style="margin-bottom:14px"></div>
+    <p class="sub-label" id="provide-intro" style="margin-bottom:4px">Save each image using the filename shown, then select the folder.</p>
+
+    <div id="provide-save-list"></div>
+
+    <div class="section-divider" style="margin:14px 0"></div>
+    <p class="sub-label" style="margin-bottom:8px">Step 2 — choose that folder</p>
+
+    <label class="file-picker-label" for="provide-folder-input">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Choose Folder with Saved Images
+    </label>
+    <input type="file" id="provide-folder-input" name="provide-folder" webkitdirectory directory multiple/>
+    <p style="font-size:10px;color:var(--muted);margin:8px 0;text-align:center" id="provide-file-status"></p>
+
+    <div id="provide-match-summary"></div>
+    <div id="provide-pairing-list"></div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn secondary" id="provide-cancel-btn" style="width:auto;flex:1">Cancel</button>
+      <button class="btn" id="provide-apply-btn" style="width:auto;flex:1" disabled>Apply &amp; Build Excel</button>
+    </div>
+  </div>
+
+<script>
+  var t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
+
+  var HEADERS = ['Type','Item','Item Count','Phase','Est Hours','Worked Hours','Status','Integrated','Resource','Notes'];
+  var COL_ITEM_COUNT = 2, COL_EST = 4, COL_WORKED = 5;
+
+  function setStatus(msg, cls) {
+    var el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+    t.sizeTo(document.body);
+  }
+
+  var currentRows = null;       // plain array-of-arrays for the text-only export
+  var currentImageRows = null;  // array-of-objects, includes .image for the image export
+
+  function showReady(rows) {
+    currentRows = rows;
+    document.getElementById('row-count').textContent = rows.length;
+    document.getElementById('ready').style.display = 'block';
+    setStatus('Ready — ' + rows.length + ' cards.', 'ok');
+    t.sizeTo(document.body);
+  }
+
+  function showImageReady(imageRows) {
+    currentImageRows = imageRows;
+    var withImages = imageRows.filter(function(r) { return r.image; }).length;
+    var missing = imageRows.filter(function(r) { return !r.image && r.hasIntendedShowcase; });
+    var infoEl = document.getElementById('images-info');
+    var btn = document.getElementById('dl-images-btn');
+    var provideBtn = document.getElementById('provide-images-btn');
+    if (withImages > 0) {
+      infoEl.textContent = withImages + ' of ' + imageRows.length + ' cards have a Showcase image.';
+      btn.disabled = false;
+    } else {
+      infoEl.textContent = 'No cards have a Showcase image yet.';
+      btn.disabled = true;
+    }
+    if (missing.length > 0) {
+      provideBtn.style.display = 'inline-flex';
+      provideBtn.innerHTML = '<span>Download with Hi-Res Images</span><span class="btn-sub">Manual Save and Export (' + missing.length + ' cards)</span>';
+    } else {
+      provideBtn.style.display = 'none';
+    }
+    t.sizeTo(document.body);
+  }
+
+  // ── Plain text-only export (unchanged) ──────────────────────────────────
+  function buildAndDownload(rows) {
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('TimeTrack Export');
+
+    var headerRow = ws.addRow(HEADERS);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: 'middle' };
+
+    var sumItemCount = 0, sumEst = 0, sumWorked = 0;
+    rows.forEach(function(r) {
+      ws.addRow(r);
+      sumItemCount += parseFloat(r[COL_ITEM_COUNT]) || 0;
+      sumEst       += parseFloat(r[COL_EST])        || 0;
+      sumWorked    += parseFloat(r[COL_WORKED])     || 0;
+    });
+
+    var totalRowValues = new Array(HEADERS.length).fill('');
+    totalRowValues[0] = 'TOTAL';
+    totalRowValues[COL_ITEM_COUNT] = sumItemCount;
+    totalRowValues[COL_EST]        = sumEst;
+    totalRowValues[COL_WORKED]     = sumWorked;
+    var totalRow = ws.addRow(totalRowValues);
+    totalRow.font = { bold: true };
+    totalRow.eachCell(function(cell) {
+      cell.border = { top: { style: 'thin' } };
+    });
+
+    var itemCountCol = ws.getColumn(COL_ITEM_COUNT + 1);
+    itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    ws.columns.forEach(function(col, i) {
+      var header = HEADERS[i] || '';
+      col.width = header === 'Notes' ? 40 : header === 'Item' ? 30 : header === 'Resource' ? 22 : 14;
+    });
+
+    downloadWorkbook(wb, 'timetrack-export.xlsx');
+  }
+
+  // ── Image-inclusive export ───────────────────────────────────────────────
+  function buildAndDownloadWithImages(imageRows) {
+    setStatus('Building file with images…');
+    var wb = new ExcelJS.Workbook();
+    var ws = wb.addWorksheet('TimeTrack Export');
+
+    var headersWithImage = HEADERS.concat(['Showcase Image']);
+    var headerRow = ws.addRow(headersWithImage);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: 'middle', wrapText: true };
+
+    // Preset column width — every column in this export uses the same
+    // width as the Showcase Image column, so long text has a consistent,
+    // predictable wrap point instead of a jagged mix of column sizes.
+    var UNIFORM_COL_WIDTH = 28;
+    var IMAGE_HEIGHT = 117;       // pixel height of the embedded image itself
+    var IMAGE_ROW_HEIGHT = 145;   // row height (Excel points) with extra buffer so the
+                                  // image is never clipped, since row height and image
+                                  // size use different units and render differently
+                                  // across viewers (Excel, Google Sheets, etc.)
+    var LINE_HEIGHT  = 15;   // approx px per wrapped line at this font size
+    var CHARS_PER_LINE = Math.round(UNIFORM_COL_WIDTH * 1.7); // rough chars-per-line at this width
+
+    var sumItemCount = 0, sumEst = 0, sumWorked = 0;
+    var IMG_COL_INDEX = headersWithImage.length - 1; // 0-based
+
+    imageRows.forEach(function(r, i) {
+      var rowValues = [r.listName, r.cardName, r.itemCount, r.phase, r.est, r.spent, r.status, r.integrated, r.resource, r.notes, ''];
+      var excelRow = ws.addRow(rowValues);
+      excelRow.alignment = { vertical: 'middle', wrapText: true };
+
+      // Base height needed for the image (if any)
+      var baseHeight = r.image ? IMAGE_ROW_HEIGHT : 18;
+
+      // Extra height needed if any cell's text is long enough to wrap
+      // across multiple lines at the uniform column width
+      var maxLines = 1;
+      rowValues.forEach(function(val) {
+        var text = String(val || '');
+        if (text.length > CHARS_PER_LINE) {
+          maxLines = Math.max(maxLines, Math.ceil(text.length / CHARS_PER_LINE));
+        }
+      });
+      var textHeight = maxLines * LINE_HEIGHT + 8;
+
+      excelRow.height = Math.max(baseHeight, textHeight);
+
+      sumItemCount += parseFloat(r.itemCount) || 0;
+      sumEst       += parseFloat(r.est)       || 0;
+      sumWorked    += parseFloat(r.spent)     || 0;
+
+      if (r.image) {
+        try {
+          var base64only = r.image.replace(/^data:image\/\w+;base64,/, '');
+          var imgId = wb.addImage({ base64: base64only, extension: 'jpeg' });
+          ws.addImage(imgId, {
+            tl: { col: IMG_COL_INDEX, row: excelRow.number - 1 },
+            ext: { width: 166, height: IMAGE_HEIGHT }
+          });
+        } catch (e) {
+          console.error('Could not embed image for row', i, e);
+        }
+      }
+    });
+
+    var totalRowValues = new Array(headersWithImage.length).fill('');
+    totalRowValues[0] = 'TOTAL';
+    totalRowValues[COL_ITEM_COUNT] = sumItemCount;
+    totalRowValues[COL_EST]        = sumEst;
+    totalRowValues[COL_WORKED]     = sumWorked;
+    var totalRow = ws.addRow(totalRowValues);
+    totalRow.font = { bold: true };
+    totalRow.eachCell(function(cell) {
+      cell.border = { top: { style: 'thin' } };
+    });
+
+    var itemCountCol = ws.getColumn(COL_ITEM_COUNT + 1);
+    itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    var MINIMAL_WIDTH_HEADERS = ['Item Count', 'Phase', 'Est Hours', 'Integrated'];
+    var SLIGHTLY_WIDER_HEADERS = ['Worked Hours', 'Status'];
+    ws.columns.forEach(function(col, i) {
+      var header = headersWithImage[i] || '';
+      col.width = MINIMAL_WIDTH_HEADERS.indexOf(header) >= 0 ? 10
+        : SLIGHTLY_WIDER_HEADERS.indexOf(header) >= 0 ? 14
+        : UNIFORM_COL_WIDTH;
+    });
+
+    downloadWorkbook(wb, 'timetrack-export-with-images.xlsx').then(function() {
+      setStatus('Ready — ' + currentRows.length + ' cards.', 'ok');
+    });
+  }
+
+  // ── Guided "provide missing images" flow ─────────────────────────────────
+  // Reads image bytes straight from the user's own computer (FileReader),
+  // which sidesteps the CORS restriction entirely — this is the same
+  // reliable mechanism the Showcase tab's "Choose Image" button uses.
+  // Only targets cards where the user has already expressed intent for a
+  // showcase image (uploaded a thumbnail or picked an attachment) but we
+  // don't have usable image bytes for it yet.
+  //
+  // Strategy: since we can't force a specific filename on a cross-origin
+  // save (same CORS wall as reading bytes), we show the user the exact
+  // filename to use when they save each image, then read the whole folder
+  // back afterward and auto-match files to cards by that filename. Any
+  // files that don't match automatically fall back to manual pairing.
+  var provideMissingRows = [];   // rows needing an image, filtered to intended-showcase only
+  var providePicked = [];        // [{ file, dataUrl, name, matchedRowIdx }] from the folder
+  var PROVIDE_MAX_DIM = 700;
+  var PROVIDE_QUALITY = 0.7;
+
+  function sanitizeFilename(name) {
+    return String(name || 'card')
+      .replace(/[\\/:*?"<>|]/g, '')  // strip characters invalid in filenames
+      .replace(/\s+/g, '_')
+      .slice(0, 60)
+      .trim() || 'card';
+  }
+
+  function suggestedFilename(row) {
+    return sanitizeFilename(row.cardName) + '.jpg';
+  }
+
+  function provideCompressImage(file) {
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+          var width = img.width, height = img.height;
+          var scale = Math.min(1, PROVIDE_MAX_DIM / Math.max(width, height));
+          width  = Math.round(width * scale);
+          height = Math.round(height * scale);
+          var canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', PROVIDE_QUALITY));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function startProvideFlow() {
+    provideMissingRows = currentImageRows.filter(function(r) { return !r.image && r.hasIntendedShowcase; });
+    providePicked = [];
+    document.getElementById('ready').style.display = 'none';
+    document.getElementById('provide-images-panel').style.display = 'block';
+    document.getElementById('provide-pairing-list').innerHTML = '';
+    document.getElementById('provide-match-summary').innerHTML = '';
+    document.getElementById('provide-apply-btn').disabled = true;
+    document.getElementById('provide-folder-input').value = '';
+
+    var saveListEl = document.getElementById('provide-save-list');
+    var withUrls = provideMissingRows.filter(function(r) { return r.attachmentUrl; });
+
+    var openAllHtml = withUrls.length > 1
+      ? '<button class="btn secondary" id="provide-openall-btn" style="margin-bottom:10px">Open All ' + withUrls.length + ' Images at Once</button>' +
+        '<p style="font-size:9px;color:var(--muted);margin:-4px 0 10px;text-align:center">If your browser blocks the tabs, allow popups for this site and try again.</p>'
+      : '';
+
+    saveListEl.innerHTML = openAllHtml + provideMissingRows.map(function(r) {
+      var filename = suggestedFilename(r);
+      if (r.attachmentUrl) {
+        return '<div class="save-row">' +
+          '<div class="save-row-inner">' +
+            '<span class="save-row-name" title="' + escHtml(r.cardName) + '">' + escHtml(r.cardName) + '</span>' +
+            '<span class="save-row-filename">Save as: ' + escHtml(filename) + '</span>' +
+          '</div>' +
+          '<a class="save-row-link" href="' + escHtml(r.attachmentUrl) + '" target="_blank" rel="noopener">Open</a>' +
+        '</div>';
+      }
+      return '<div class="save-row">' +
+        '<span class="save-row-name" title="' + escHtml(r.cardName) + '">' + escHtml(r.cardName) + '</span>' +
+        '<span class="save-row-none">No attachment URL found</span>' +
+      '</div>';
+    }).join('');
+
+    var openAllBtn = document.getElementById('provide-openall-btn');
+    if (openAllBtn) {
+      openAllBtn.addEventListener('click', function() {
+        // Fired synchronously within the click handler — browsers generally
+        // allow multiple window.open() calls this way without blocking them,
+        // unlike delayed/async popups.
+        withUrls.forEach(function(r) {
+          window.open(r.attachmentUrl, '_blank', 'noopener');
+        });
+      });
+    }
+
+    t.sizeTo(document.body);
+  }
+
+  document.getElementById('provide-folder-input').addEventListener('change', function() {
+    var files = Array.from(this.files || []).filter(function(f) {
+      return f.type && f.type.indexOf('image/') === 0;
+    });
+    if (files.length === 0) {
+      document.getElementById('provide-file-status').textContent = 'No image files found in that folder.';
+      return;
+    }
+    document.getElementById('provide-file-status').textContent = 'Reading ' + files.length + ' image(s)…';
+
+    Promise.all(files.map(function(file) {
+      return provideCompressImage(file).then(function(dataUrl) {
+        return { file: file, dataUrl: dataUrl, name: file.name };
+      }).catch(function() {
+        return { file: file, dataUrl: null, name: file.name };
+      });
+    })).then(function(results) {
+      // Auto-match each file to a card by comparing the filename (minus
+      // extension) to each row's sanitized card name.
+      results.forEach(function(pick) {
+        var baseName = pick.name.replace(/\.[^.]+$/, '').toLowerCase();
+        var matchIdx = provideMissingRows.findIndex(function(r) {
+          return sanitizeFilename(r.cardName).toLowerCase() === baseName;
+        });
+        pick.matchedRowIdx = matchIdx >= 0 ? matchIdx : null;
+      });
+
+      providePicked = results;
+      var matchedCount = results.filter(function(p) { return p.matchedRowIdx !== null; }).length;
+      document.getElementById('provide-file-status').textContent =
+        results.filter(function(r){return r.dataUrl;}).length + ' of ' + results.length + ' images read.';
+
+      var summaryEl = document.getElementById('provide-match-summary');
+      if (matchedCount === provideMissingRows.length && matchedCount === results.length) {
+        summaryEl.innerHTML = '<div class="match-summary ok">✓ All ' + matchedCount + ' images matched automatically by filename.</div>';
+      } else {
+        summaryEl.innerHTML = '<div class="match-summary partial">' + matchedCount + ' of ' + provideMissingRows.length +
+          ' matched automatically. Check any unmatched files below and assign them manually.</div>';
+      }
+
+      renderPairingList();
+    });
+  });
+
+  function renderPairingList() {
+    var listEl = document.getElementById('provide-pairing-list');
+    var cardOptions = provideMissingRows.map(function(r, i) {
+      return '<option value="' + i + '">' + escHtml(r.cardName) + ' (' + escHtml(r.listName) + ')</option>';
+    }).join('');
+
+    // Only show rows in the pairing UI for files that need manual attention
+    // (no auto-match found) — successfully auto-matched files are applied
+    // silently without cluttering the UI.
+    var unmatched = providePicked.filter(function(p) { return p.matchedRowIdx === null; });
+
+    if (unmatched.length === 0) {
+      listEl.innerHTML = '';
+    } else {
+      listEl.innerHTML = unmatched.map(function(pick) {
+        var pickIdx = providePicked.indexOf(pick);
+        if (!pick.dataUrl) {
+          return '<div class="pairing-row"><span class="pairing-filename">' + escHtml(pick.name) + '</span><span style="color:var(--warn);font-size:10px">Could not read this file</span></div>';
+        }
+        return '<div class="pairing-row">' +
+          '<div class="pairing-thumb"><img src="' + pick.dataUrl + '" alt=""/></div>' +
+          '<span class="pairing-filename" title="' + escHtml(pick.name) + '">' + escHtml(pick.name) + '</span>' +
+          '<select class="pairing-select" data-pick-idx="' + pickIdx + '">' +
+            '<option value="">— Skip this file —</option>' +
+            cardOptions +
+          '</select>' +
+        '</div>';
+      }).join('');
+    }
+
+    document.getElementById('provide-apply-btn').disabled = providePicked.filter(function(p){return p.dataUrl;}).length === 0;
+    t.sizeTo(document.body);
+  }
+
+  document.getElementById('provide-apply-btn').addEventListener('click', function() {
+    // Apply auto-matched files first
+    providePicked.forEach(function(pick) {
+      if (pick.matchedRowIdx !== null && pick.dataUrl) {
+        applyPickToRow(pick, provideMissingRows[pick.matchedRowIdx]);
+      }
+    });
+
+    // Then apply any manual pairings made for unmatched files
+    var selects = document.querySelectorAll('#provide-pairing-list .pairing-select');
+    selects.forEach(function(sel) {
+      var pickIdx = parseInt(sel.dataset.pickIdx, 10);
+      var cardIdx = sel.value;
+      if (cardIdx === '') return; // skipped
+      var pick = providePicked[pickIdx];
+      var row = provideMissingRows[parseInt(cardIdx, 10)];
+      if (!pick || !pick.dataUrl || !row) return;
+      applyPickToRow(pick, row);
+    });
+
+    document.getElementById('provide-images-panel').style.display = 'none';
+    document.getElementById('ready').style.display = 'block';
+    var withImages = currentImageRows.filter(function(r) { return r.image; }).length;
+    document.getElementById('images-info').textContent = withImages + ' of ' + currentImageRows.length + ' cards have a Showcase image.';
+    document.getElementById('dl-images-btn').disabled = withImages === 0;
+    buildAndDownloadWithImages(currentImageRows);
+  });
+
+  function applyPickToRow(pick, row) {
+    row.image = pick.dataUrl;
+    try {
+      if (row.cardId) {
+        localStorage.setItem('timetrack-showcase-hires-' + row.cardId, JSON.stringify({
+          image: pick.dataUrl, savedAt: Date.now()
+        }));
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  document.getElementById('provide-cancel-btn').addEventListener('click', function() {
+    document.getElementById('provide-images-panel').style.display = 'none';
+    document.getElementById('ready').style.display = 'block';
+    t.sizeTo(document.body);
+  });
+
+  document.getElementById('provide-images-btn').addEventListener('click', startProvideFlow);
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function downloadWorkbook(wb, filename) {
+    return wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    }).catch(function(err) {
+      setStatus('Error building file: ' + (err.message || 'unknown'), 'err');
+    });
+  }
+
+  document.getElementById('dl-btn').addEventListener('click', function() {
+    if (currentRows) buildAndDownload(currentRows);
+  });
+
+  document.getElementById('dl-images-btn').addEventListener('click', function() {
+    if (currentImageRows) buildAndDownloadWithImages(currentImageRows);
+  });
+
+  // ── Load both datasets from localStorage ─────────────────────────────────
+  t.board('id').then(function(board) {
+    var plainKey = 'timetrack-export-' + board.id;
+    var imageKey = 'timetrack-export-images-' + board.id;
+
+    var rawPlain = null, rawImages = null;
+    try {
+      rawPlain  = localStorage.getItem(plainKey);
+      rawImages = localStorage.getItem(imageKey);
+    } catch (e) {
+      setStatus('Could not access local storage: ' + e.message, 'err');
+      return;
+    }
+
+    if (!rawPlain) {
+      setStatus('No export data found. Click "Export to Excel" in the board toolbar first, then reopen this popup.', 'err');
+      return;
+    }
+
+    try {
+      var parsed = JSON.parse(rawPlain);
+      var rows = parsed.rows || [];
+      if (rows.length === 0) {
+        setStatus('No cards with estimated hours were found.', 'err');
+        return;
+      }
+      showReady(rows);
+
+      if (rawImages) {
+        var parsedImages = JSON.parse(rawImages);
+        showImageReady(parsedImages.rows || []);
+      } else {
+        document.getElementById('images-info').textContent = 'No image data found — reopen "Export to Excel" from the board toolbar to rebuild.';
+      }
+
+      var ageMin = Math.round((Date.now() - (parsed.builtAt || 0)) / 60000);
+      if (ageMin > 0) {
+        setStatus('Ready — ' + rows.length + ' cards (built ' + ageMin + ' min ago).', 'ok');
+      }
+    } catch (e) {
+      setStatus('Error reading export data: ' + e.message, 'err');
+    }
+  }).catch(function(err) {
+    setStatus('Error: ' + (err.message || 'unknown'), 'err');
+  });
+</script>
+</body>
+</html>
