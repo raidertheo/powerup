@@ -26,6 +26,16 @@
 
     /* Tabs */
     .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+    .refresh-banner {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: rgba(245,205,71,.1); border: 1px solid #f5cd47; border-radius: 8px;
+      padding: 8px 10px; margin-bottom: 12px; font-size: 11px; color: #f5cd47;
+    }
+    .refresh-banner button {
+      flex-shrink: 0; background: #f5cd47; color: #1a1d27; border: none; border-radius: 6px;
+      padding: 5px 10px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
     .tab { flex: 1; padding: 7px; text-align: center; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--muted); transition: all .15s; user-select: none; }
     .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .panel { display: none; }
@@ -139,6 +149,11 @@
 </head>
 <body>
 <h2><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Board Time Summary</h2>
+
+<div class="refresh-banner" id="refresh-banner" style="display:none">
+  <span id="refresh-banner-text"></span>
+  <button id="refresh-banner-btn" onclick="closeForRefresh()">Close &amp; Refresh</button>
+</div>
 
 <div class="tabs">
   <div class="tab active" id="tab-chart"    onclick="switchTab('chart')">Chart</div>
@@ -573,6 +588,31 @@
   ];
 
   // ── Main render ──────────────────────────────────────────────────────────
+  // Time Summary data is built once by the connector and cached — it does
+  // NOT auto-refresh if cards change afterward (e.g. a native Trello member
+  // gets added/removed on a card). Show how old the data is so that's not
+  // a confusing mystery, with a one-click way to close this popup so the
+  // person can reopen "Time Summary" from the board toolbar to rebuild it.
+  function showRefreshBanner(builtAt) {
+    const banner = document.getElementById('refresh-banner');
+    const text   = document.getElementById('refresh-banner-text');
+    if (!builtAt) { banner.style.display = 'none'; return; }
+
+    const ageMin = Math.round((Date.now() - builtAt) / 60000);
+    let ageText;
+    if (ageMin < 1) ageText = 'just now';
+    else if (ageMin === 1) ageText = '1 minute ago';
+    else if (ageMin < 60) ageText = ageMin + ' minutes ago';
+    else ageText = Math.round(ageMin / 60) + ' hour(s) ago';
+
+    text.textContent = '⚠ Data built ' + ageText + '. Recent card changes may not be reflected yet.';
+    banner.style.display = 'flex';
+  }
+
+  function closeForRefresh() {
+    t.closePopup();
+  }
+
   function renderAll(summary) {
     try {
     const boardEst    = summary.boardEst    || 0;
@@ -889,6 +929,7 @@
         summaryData.cardRows    = summary.cardRows    || [];
         summaryData.memberCards = summary.memberCards || {};
         renderAll(summary);
+        showRefreshBanner(summary.builtAt);
       } catch (e) {
         document.getElementById('container').innerHTML =
           '<div class="empty">Error parsing summary data.</div>';
