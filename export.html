@@ -94,6 +94,18 @@
       <span>Download with Hi-Res Images</span>
       <span class="btn-sub">Manual Save and Export</span>
     </button>
+
+    <div class="section-divider" style="margin-top:16px"></div>
+
+    <p class="sub-label" style="margin:12px 0 8px">By phase (no images):</p>
+    <button class="btn secondary stacked" id="dl-phase1-btn" disabled>
+      <span>Download Phase 1 Only</span>
+      <span class="btn-sub" id="phase1-sub">Cards labeled Phase 1</span>
+    </button>
+    <button class="btn secondary stacked" id="dl-phase2-btn" disabled style="margin-top:8px">
+      <span>Download Phase 2 Only</span>
+      <span class="btn-sub" id="phase2-sub">Cards labeled Phase 2</span>
+    </button>
   </div>
 
   <div id="provide-images-panel" style="display:none">
@@ -137,8 +149,21 @@
   var currentRows = null;       // plain array-of-arrays for the text-only export
   var currentImageRows = null;  // array-of-objects, includes .image for the image export
 
+  var COL_PHASE = 3;
+  function rowsForPhase(rows, phase) {
+    return (rows || []).filter(function(r) { return r[COL_PHASE] === phase; });
+  }
+  function setupPhaseButtons(rows) {
+    [['Phase 1', 'dl-phase1-btn', 'phase1-sub'], ['Phase 2', 'dl-phase2-btn', 'phase2-sub']].forEach(function(p) {
+      var n = rowsForPhase(rows, p[0]).length;
+      document.getElementById(p[1]).disabled = n === 0;
+      document.getElementById(p[2]).textContent = n + (n === 1 ? ' card' : ' cards') + ' labeled ' + p[0];
+    });
+  }
+
   function showReady(rows) {
     currentRows = rows;
+    setupPhaseButtons(rows);
     document.getElementById('row-count').textContent = rows.length;
     document.getElementById('ready').style.display = 'block';
     setStatus('Ready — ' + rows.length + ' cards.', 'ok');
@@ -169,7 +194,7 @@
   }
 
   // ── Plain text-only export (unchanged) ──────────────────────────────────
-  function buildAndDownload(rows) {
+  function buildAndDownload(rows, filename) {
     var wb = new ExcelJS.Workbook();
     var ws = wb.addWorksheet('TimeTrack Export');
 
@@ -204,7 +229,7 @@
       col.width = header === 'Notes' ? 40 : header === 'Item' ? 30 : header === 'Resource' ? 22 : header === 'HXGN Auto-gen' ? 16 : 14;
     });
 
-    downloadWorkbook(wb, 'timetrack-export.xlsx');
+    downloadWorkbook(wb, filename || 'timetrack-export.xlsx');
   }
 
   // ── Image-inclusive export ───────────────────────────────────────────────
@@ -552,6 +577,13 @@
 
   document.getElementById('dl-btn').addEventListener('click', function() {
     if (currentRows) buildAndDownload(currentRows);
+  });
+
+  document.getElementById('dl-phase1-btn').addEventListener('click', function() {
+    if (currentRows) buildAndDownload(rowsForPhase(currentRows, 'Phase 1'), 'timetrack-export-phase-1.xlsx');
+  });
+  document.getElementById('dl-phase2-btn').addEventListener('click', function() {
+    if (currentRows) buildAndDownload(rowsForPhase(currentRows, 'Phase 2'), 'timetrack-export-phase-2.xlsx');
   });
 
   document.getElementById('dl-images-btn').addEventListener('click', function() {
