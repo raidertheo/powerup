@@ -193,6 +193,32 @@
     t.sizeTo(document.body);
   }
 
+  // ── TOTAL row ────────────────────────────────────────────────────────────
+  // Uses live =SUM() formulas over the data rows (rows 2 .. dataCount+1) so the
+  // totals update if anyone edits the spreadsheet. The cached result is also
+  // stored so viewers that don't recalculate on open still show the numbers.
+  function colLetter(zeroBasedIdx) {
+    var n = zeroBasedIdx + 1, s = '';
+    while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  function addTotalRow(ws, colCount, dataCount, sumItemCount, sumEst, sumWorked) {
+    var vals = new Array(colCount).fill('');
+    vals[0] = 'TOTAL';
+    var totalRow = ws.addRow(vals);
+    if (dataCount > 0) {
+      var first = 2, last = dataCount + 1;
+      [[COL_ITEM_COUNT, sumItemCount], [COL_EST, sumEst], [COL_WORKED, sumWorked]].forEach(function(c) {
+        var L = colLetter(c[0]);
+        totalRow.getCell(c[0] + 1).value = { formula: 'SUM(' + L + first + ':' + L + last + ')', result: c[1] };
+      });
+    }
+    totalRow.font = { bold: true };
+    totalRow.eachCell({ includeEmpty: true }, function(cell) {
+      cell.border = { top: { style: 'thin' } };
+    });
+  }
+
   // ── Plain text-only export (unchanged) ──────────────────────────────────
   function buildAndDownload(rows, filename) {
     var wb = new ExcelJS.Workbook();
@@ -210,16 +236,7 @@
       sumWorked    += parseFloat(r[COL_WORKED])     || 0;
     });
 
-    var totalRowValues = new Array(HEADERS.length).fill('');
-    totalRowValues[0] = 'TOTAL';
-    totalRowValues[COL_ITEM_COUNT] = sumItemCount;
-    totalRowValues[COL_EST]        = sumEst;
-    totalRowValues[COL_WORKED]     = sumWorked;
-    var totalRow = ws.addRow(totalRowValues);
-    totalRow.font = { bold: true };
-    totalRow.eachCell(function(cell) {
-      cell.border = { top: { style: 'thin' } };
-    });
+    addTotalRow(ws, HEADERS.length, rows.length, sumItemCount, sumEst, sumWorked);
 
     var itemCountCol = ws.getColumn(COL_ITEM_COUNT + 1);
     itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -297,16 +314,7 @@
       }
     });
 
-    var totalRowValues = new Array(headersWithImage.length).fill('');
-    totalRowValues[0] = 'TOTAL';
-    totalRowValues[COL_ITEM_COUNT] = sumItemCount;
-    totalRowValues[COL_EST]        = sumEst;
-    totalRowValues[COL_WORKED]     = sumWorked;
-    var totalRow = ws.addRow(totalRowValues);
-    totalRow.font = { bold: true };
-    totalRow.eachCell(function(cell) {
-      cell.border = { top: { style: 'thin' } };
-    });
+    addTotalRow(ws, headersWithImage.length, imageRows.length, sumItemCount, sumEst, sumWorked);
 
     var itemCountCol = ws.getColumn(COL_ITEM_COUNT + 1);
     itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
