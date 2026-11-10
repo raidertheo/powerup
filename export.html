@@ -124,8 +124,8 @@
 <script>
   var t = TrelloPowerUp.iframe({ appKey: 'ed700e2887fc04558ed3a0efa61f25b6', appName: 'TimeTrack' });
 
-  var HEADERS = ['Type','Item','Item Count','Phase','Est Hours','Worked Hours','Status','Integrated','Resource','Notes'];
-  var COL_ITEM_COUNT = 2, COL_EST = 4, COL_WORKED = 5;
+  var HEADERS = ['Type','Item','Item Count','Phase','HXGN Auto-gen','Est Hours','Worked Hours','Status','Integrated','Resource','Notes'];
+  var COL_ITEM_COUNT = 2, COL_EST = 5, COL_WORKED = 6;
 
   function setStatus(msg, cls) {
     var el = document.getElementById('status');
@@ -201,7 +201,7 @@
 
     ws.columns.forEach(function(col, i) {
       var header = HEADERS[i] || '';
-      col.width = header === 'Notes' ? 40 : header === 'Item' ? 30 : header === 'Resource' ? 22 : 14;
+      col.width = header === 'Notes' ? 40 : header === 'Item' ? 30 : header === 'Resource' ? 22 : header === 'HXGN Auto-gen' ? 16 : 14;
     });
 
     downloadWorkbook(wb, 'timetrack-export.xlsx');
@@ -234,7 +234,7 @@
     var IMG_COL_INDEX = headersWithImage.length - 1; // 0-based
 
     imageRows.forEach(function(r, i) {
-      var rowValues = [r.listName, r.cardName, r.itemCount, r.phase, r.est, r.spent, r.status, r.integrated, r.resource, r.notes, ''];
+      var rowValues = [r.listName, r.cardName, r.itemCount, r.phase, r.hxgn, r.est, r.spent, r.status, r.integrated, r.resource, r.notes, ''];
       var excelRow = ws.addRow(rowValues);
       excelRow.alignment = { vertical: 'middle', wrapText: true };
 
@@ -287,7 +287,7 @@
     itemCountCol.alignment = { horizontal: 'center', vertical: 'middle' };
 
     var MINIMAL_WIDTH_HEADERS = ['Item Count', 'Phase', 'Est Hours', 'Integrated'];
-    var SLIGHTLY_WIDER_HEADERS = ['Worked Hours', 'Status'];
+    var SLIGHTLY_WIDER_HEADERS = ['Worked Hours', 'Status', 'HXGN Auto-gen'];
     ws.columns.forEach(function(col, i) {
       var header = headersWithImage[i] || '';
       col.width = MINIMAL_WIDTH_HEADERS.indexOf(header) >= 0 ? 10

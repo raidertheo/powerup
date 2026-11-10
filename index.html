@@ -114,12 +114,19 @@ function openBoardSummary(t) {
         Promise.all([
           t.get(card.id, 'shared', 'timetrack').catch(() => null),
           t.get(card.id, 'shared', 'timetrack-members').catch(() => null),
-          t.get(card.id, 'shared', 'timetrack-assigned').catch(() => null)
-        ]).then(([d, log, assigned]) => ({
-          id: card.id, listId: card.idList, name: card.name,
-          assignedIds: assigned || [],
-          data: d || {}, log: log || []
-        }))
+          t.get(card.id, 'shared', 'timetrack-assigned').catch(() => null),
+          t.get(card.id, 'shared', 'timetrack-last-native').catch(() => null)
+        ]).then(([d, log, assigned, lastNative]) => {
+          // Refresh assignments against the card's current native members so
+          // anyone removed from the card drops out of the summary and Assign tab.
+          const nativeIds = (card.members || []).map(m => m.id).filter(Boolean);
+          return syncCardMembers(t, card.id, nativeIds, assigned || [], lastNative || [])
+            .then(prunedAssigned => ({
+              id: card.id, listId: card.idList, name: card.name,
+              assignedIds: prunedAssigned,
+              data: d || {}, log: log || []
+            }));
+        })
       );
 
       // Build lookup maps from card data
@@ -414,6 +421,35 @@ function pruneRemovedMembers(assignedIds, lastNative, currentNativeIds) {
   });
 }
 
+// Refresh one card's member assignments against Trello's CURRENT native
+// members. Anyone who was a native member at the last snapshot but isn't now
+// is removed from the Power-Up's Assign list (timetrack-assigned), and the
+// snapshot (timetrack-last-native) is brought up to date so the next check
+// can detect further removals. Writes happen only when something actually
+// changed, and a failed write never blocks the caller. Resolves to the
+// refreshed assigned-ID list. Members added purely via the Assign tab
+// (never native on the card) are left untouched.
+function syncCardMembers(t, cardId, nativeIds, assigned, lastNative) {
+  assigned   = assigned   || [];
+  lastNative = lastNative || [];
+  var pruned = pruneRemovedMembers(assigned, lastNative, nativeIds);
+  var snapshotChanged = lastNative.length !== nativeIds.length ||
+    nativeIds.some(function(id) { return lastNative.indexOf(id) === -1; });
+  var writes = [];
+  if (pruned.length !== assigned.length) {
+    writes.push(t.set(cardId, 'shared', 'timetrack-assigned', pruned));
+  }
+  if (snapshotChanged) {
+    writes.push(t.set(cardId, 'shared', 'timetrack-last-native', nativeIds));
+  }
+  return Promise.all(writes.map(function(w) {
+    return Promise.resolve(w).catch(function(err) {
+      console.warn('Member sync: could not save for card', cardId, err && err.message);
+      return null;
+    });
+  })).then(function() { return pruned; });
+}
+
 function openExportPopup(t) {
   // Build the full export dataset in the CONNECTOR context (has reliable
   // access to every card's plugin data), then hand it to export.html via
@@ -477,7 +513,10 @@ function openExportPopup(t) {
             getWithRetry(card.id, 'timetrack-last-native', 1)
           ]).then(function(res) {
             if (res[0] === null) readFailures++;
-            results.push({ card: card, data: res[0] || {}, log: res[1] || [], assigned: res[2] || [], showcase: res[3] || null, showcaseSelected: res[4] || null, lastNative: res[5] || [] });
+            var nativeIdsNow = (card.members || []).map(function(m) { return m.id; }).filter(Boolean);
+            return syncCardMembers(t, card.id, nativeIdsNow, res[2] || [], res[5] || []).then(function(prunedAssigned) {
+              results.push({ card: card, data: res[0] || {}, log: res[1] || [], assigned: prunedAssigned, showcase: res[3] || null, showcaseSelected: res[4] || null, lastNative: nativeIdsNow });
+            });
           });
         });
       }, Promise.resolve()).then(function() {
@@ -510,6 +549,7 @@ function openExportPopup(t) {
           if (labels[i].name === 'Phase 1') { phase = 'Phase 1'; break; }
           if (labels[i].name === 'Phase 2') { phase = 'Phase 2'; }
         }
+        var hxgn = labels.some(function(l){ return String(l.name||'').trim().toLowerCase() === 'hxgn auto-gen'; }) ? 'HXGN Auto-gen' : '';
 
         var nativeNames   = (card.members||[]).map(function(m){ return m.fullName||m.username||''; }).filter(Boolean);
         var currentNativeIds = (card.members||[]).map(function(m){ return m.id; }).filter(Boolean);
@@ -530,6 +570,7 @@ function openExportPopup(t) {
           card.name || '',
           itemCount,
           phase,
+          hxgn,
           est,
           parseFloat(data.spent) || 0,
           computeTimeTrackStatus(parseFloat(data.spent) || 0, parseInt(data.progress, 10) || 0),
@@ -568,6 +609,7 @@ function openExportPopup(t) {
           if (labels[i].name === 'Phase 1') { phase = 'Phase 1'; break; }
           if (labels[i].name === 'Phase 2') { phase = 'Phase 2'; }
         }
+        var hxgn = labels.some(function(l){ return String(l.name||'').trim().toLowerCase() === 'hxgn auto-gen'; }) ? 'HXGN Auto-gen' : '';
         var nativeNames   = (card.members||[]).map(function(m){ return m.fullName||m.username||''; }).filter(Boolean);
         var currentNativeIds2 = (card.members||[]).map(function(m){ return m.id; }).filter(Boolean);
         var prunedAssigned2 = pruneRemovedMembers(item.assigned, item.lastNative, currentNativeIds2);
@@ -605,6 +647,7 @@ function openExportPopup(t) {
           cardName:    card.name || '',
           itemCount:   itemCount,
           phase:       phase,
+          hxgn:        hxgn,
           est:         est,
           spent:       parseFloat(data.spent) || 0,
           status:      computeTimeTrackStatus(parseFloat(data.spent) || 0, parseInt(data.progress, 10) || 0),
